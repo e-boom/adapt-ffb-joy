@@ -40,6 +40,14 @@
 //	in addition to joystick.
 //#define ENABLE_JOYSTICK_SERIAL
 
+// Define: EXTRA_ANALOG_CONTROLS
+//	1 when trim and pedal pots are fitted on ADC0/1/4/5: the FFP's report
+//	descriptor is the original one, with Rx, Ry (trims) and Slider (pedals),
+//	plus an unused Z and 16 buttons. 0 declares Z, the trims, the pedals and
+//	buttons 10-16 as padding, so the host lists only the controls the FFP has.
+//	The report's bytes are the same either way.
+#define EXTRA_ANALOG_CONTROLS	0
+
 	/* Includes: */
 		#include <LUFA/Drivers/USB/USB.h>
 
