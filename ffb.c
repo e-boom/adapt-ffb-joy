@@ -145,14 +145,14 @@ void StopAllEffects(void)
 
 void StartEffect(uint8_t id)
 	{
-	if (id > MAX_EFFECTS)
+	if (id < 2 || id > MAX_EFFECTS)
 		return;
 	gEffectStates[id].state |= MEffectState_Playing;
 	}
 
 void StopEffect(uint8_t id)
 	{
-	if (id > MAX_EFFECTS)
+	if (id < 2 || id > MAX_EFFECTS)
 		return;
 	gEffectStates[id].state &= ~MEffectState_Playing;
 	if (!gDisabledEffects.effectId[id])
@@ -161,14 +161,16 @@ void StopEffect(uint8_t id)
 
 void FreeEffect(uint8_t id)
 	{
-	if (id > MAX_EFFECTS)
+	if (id < 2 || id > MAX_EFFECTS)
 		return;
 
+	uint8_t wasAllocated = gEffectStates[id].state & MEffectState_Allocated;
 	gEffectStates[id].state = 0;
-	if (id < nextEID)
+	if (id >= 2 && id < nextEID)
 		nextEID = id;
 		
-	ffb->FreeEffect(id);
+	if (wasAllocated)
+		ffb->FreeEffect(id);
 	}
 
 void FreeAllEffects(void)
@@ -304,6 +306,31 @@ void FfbHandle_SetDownloadForceSample(USB_FFBReport_SetDownloadForceSample_Outpu
 void FfbHandle_SetCustomForce(USB_FFBReport_SetCustomForce_Output_Data_t* data);
 void FfbHandle_SetEffect(USB_FFBReport_SetEffect_Output_Data_t *data);
 
+// The effect id indexes gEffectStates, so only slots handed out by Create New Effect pass.
+static uint8_t FfbReportEffectIdValid(uint8_t reportId, uint8_t effectId)
+	{
+	switch (reportId)
+		{
+		case 10:	// Effect Operation
+		case 11:	// Block Free
+			if (effectId == 0xFF)
+				return 1;	// all effects
+			// fall through
+		case 1:
+		case 2:
+		case 3:
+		case 4:
+		case 5:
+		case 6:
+		case 7:
+		case 14:
+			return (effectId >= 2 && effectId <= MAX_EFFECTS
+					&& (gEffectStates[effectId].state & MEffectState_Allocated));
+		default:
+			return 1;	// no effect id in this report
+		}
+	}
+
 // Handle incoming data from USB and convert it to MIDI data to joystick
 void FfbOnUsbData(uint8_t *data, uint16_t len)
 	{
@@ -314,7 +341,11 @@ void FfbOnUsbData(uint8_t *data, uint16_t len)
 
 	uint8_t effectId = data[1]; // effectBlockIndex is always the second byte.
 	
-
+	if (!FfbReportEffectIdValid(data[0], effectId))
+		{
+		LEDs_SetAllLEDs(LEDS_NO_LEDS);
+		return;
+		}
 	
 	switch (data[0])	// reportID
 		{
@@ -378,14 +409,20 @@ void FfbOnCreateNewEffect(USB_FFBReport_CreateNewEffect_Feature_Data_t* inData, 
 {
 	outData->reportId = 6;
 	
-	uint8_t midi_effect_type = ffb->UsbToMidiEffectType(inData->effectType - 1);
-	if (ffb->EffectMemFull(midi_effect_type)) {
+	// Custom (12) is implemented by neither driver; type 0 would wrap the table index
+	uint8_t typeError = (inData->effectType < USB_EFFECT_CONSTANT || inData->effectType > USB_EFFECT_FRICTION);
+	uint8_t midi_effect_type = 0;
+	if (!typeError)
+		midi_effect_type = ffb->UsbToMidiEffectType(inData->effectType - 1);
+	if (typeError || ffb->EffectMemFull(midi_effect_type)) {
 		outData->effectBlockIndex = 0;
 	} else {
 		outData->effectBlockIndex = GetNextFreeEffect(); // can also return 0 if adapter full
 	}
 
-	if (outData->effectBlockIndex == 0) {
+	if (typeError) {
+		outData->loadStatus = 3;	// 1=Success,2=Full,3=Error
+	} else if (outData->effectBlockIndex == 0) {
 		outData->loadStatus = 2;	// 1=Success,2=Full,3=Error
 	} else {
 		outData->loadStatus = 1;	// 1=Success,2=Full,3=Error
@@ -504,8 +541,11 @@ void FfbHandle_EffectOperation(USB_FFBReport_EffectOperation_Output_Data_t *data
 		LogBinary(&eid, 1);
 		}
 
+	uint8_t disabled = 0;	// "all effects" has no entry in effectId[]
 	if (eid == 0xFF)
 		eid = 0x7F;	// All effects
+	else if (eid <= MAX_EFFECTS)
+		disabled = gDisabledEffects.effectId[eid];
 
 	if (data->operation == 1)
 		{	// Start
@@ -513,7 +553,7 @@ void FfbHandle_EffectOperation(USB_FFBReport_EffectOperation_Output_Data_t *data
 			LogTextLfP(PSTR(" Start"));
 
 		StartEffect(data->effectBlockIndex);
-		if (!gDisabledEffects.effectId[eid])
+		if (!disabled)
 			ffb->StartEffect(eid);
 		}
 	else if (data->operation == 2)
@@ -523,13 +563,13 @@ void FfbHandle_EffectOperation(USB_FFBReport_EffectOperation_Output_Data_t *data
 
 		// Stop all first
 		StopAllEffects();
-		if (!gDisabledEffects.effectId[eid])
+		if (!disabled)
 			ffb->StopEffect(0x7F); // TODO: wheel ?
 
 		// Then start the given effect
 		StartEffect(data->effectBlockIndex);
 
-		if (!gDisabledEffects.effectId[eid])
+		if (!disabled)
 			ffb->StartEffect(0x7F);	// TODO: wheel ?
 		}
 	else if (data->operation == 3)
@@ -900,6 +940,9 @@ void FfbEnableSines(uint8_t inEnable)
 
 void FfbEnableEffectId(uint8_t inId, uint8_t inEnable)
 	{
+	if (inId > MAX_EFFECTS)
+		return;
+
 	gDisabledEffects.effectId[inId] = !inEnable;
 
 	if (gEffectStates[inId].state == MEffectState_Playing)

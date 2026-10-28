@@ -28,6 +28,7 @@
 */
 
 #include "debug.h"
+#include "ffb.h"
 
 // Various debug target settings
 const uint8_t DEBUG_TO_NONE = 0; // Disable sending debug data
@@ -176,9 +177,19 @@ void LogReport(const char *text, const uint16_t *reportSizeArray, uint8_t *data,
 
 	uint8_t *p = data;
 
+#ifdef DEBUG_ENABLE_USB
+	const uint8_t max_report_id = OUT_REPORT_ID_MAX + 1;	// 15 is the spoofed Create New Effect
+#else
+	const uint8_t max_report_id = OUT_REPORT_ID_MAX;
+#endif
+
 	while (p < data + len)
 		{
+		if (p[0] == 0 || p[0] > max_report_id)
+			break;
 		uint8_t replen = reportSizeArray[p[0]-1];
+		if (replen == 0)
+			break;	// would never advance
 		LogBinary(p, 1);
 		if (replen > 1)
 			LogBinary(&p[1], replen-1);

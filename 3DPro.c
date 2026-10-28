@@ -248,7 +248,8 @@ static void FA_NOINLINE( Flash_LED_12MS ) ( void )
 //------------------------------------------------------------------------------
 
 // Reboot converter. Kill USB and wait for the watchdog to catch us.
-// Note: the watchdog is unleashed in main() after init_hw() returns.
+// Note: nothing else enables the watchdog, so reboot() does; SetupHardware()
+// clears WDRF and disables it again after the reset.
 
 static void FA_NORETURN( reboot ) ( void )
 {
@@ -256,7 +257,9 @@ static void FA_NORETURN( reboot ) ( void )
 
     USBCON = _B0(USBE) | _B1(FRZCLK) ;		// Kill USB
 
-    for ( ;; )					// Wait for watchdog to bite (.5s)
+    wdt_enable( WDTO_15MS ) ;
+
+    for ( ;; )					// Wait for watchdog to bite (15ms)
 	;
 }
 

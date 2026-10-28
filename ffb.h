@@ -124,7 +124,7 @@ typedef struct
 	{ // FFB: Set CustomForceData Output Report
 	uint8_t	reportId;	// =7
 	uint8_t	effectBlockIndex;	// 1..40
-	uint8_t dataOffset;
+	uint16_t dataOffset;
 	int8_t	data[12];
 	} USB_FFBReport_SetCustomForceData_Output_Data_t;
 
@@ -197,6 +197,10 @@ typedef struct
 // Lengths of each report type
 extern const uint16_t OutReportSize[];
 
+// OUT report ids 1..OUT_REPORT_ID_MAX are valid when their OutReportSize entry is non-zero.
+// DEBUG_ENABLE_USB builds also accept OUT_REPORT_ID_MAX+1, the spoofed Create New Effect.
+#define OUT_REPORT_ID_MAX 14
+
 // Handles Force Feeback data manipulation from USB reports to joystick's MIDI channel
 
 void FfbSetDriver(uint8_t id);
@@ -245,7 +249,7 @@ typedef struct
 	uint8_t constants;
 	uint8_t triangles;
 	uint8_t sines;
-	uint8_t effectId[MAX_EFFECTS];
+	uint8_t effectId[MAX_EFFECTS+1];	// indexed by effect id, like gEffectStates
 	} TDisabledEffectTypes;
 
 extern volatile TDisabledEffectTypes gDisabledEffects;

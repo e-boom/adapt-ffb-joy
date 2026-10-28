@@ -253,12 +253,16 @@ void EVENT_USB_Device_ControlRequest(void)
 
 			if (USB_ControlRequest.bmRequestType == (REQDIR_HOSTTODEVICE | REQTYPE_CLASS | REQREC_INTERFACE))
 				{
+				uint8_t data[10];	// This is enough room for all reports
+				uint16_t len = 0;	// again, enough for all
+
+				// Leaving the SETUP uncleared makes LUFA stall the over-long request
+				if (USB_ControlRequest.wLength > sizeof(data))
+					break;
+
 				LEDs_SetAllLEDs(LEDS_ALL_LEDS);
 
 				Endpoint_ClearSETUP();
-
-				uint8_t data[10];	// This is enough room for all reports
-				uint16_t len = 0;	// again, enough for all
 
 				len = USB_ControlRequest.wLength;
 				
@@ -269,7 +273,7 @@ void EVENT_USB_Device_ControlRequest(void)
 				Endpoint_ClearStatusStage();
 
 				// Process the incoming report
-				if (USB_ControlRequest.wValue == 0x0305)
+				if (USB_ControlRequest.wValue == 0x0305 && len >= sizeof(USB_FFBReport_CreateNewEffect_Feature_Data_t))
 					{	// Feature 1
 					_delay_us(500);	// Windows does not like to be answered too quickly
 //					LogData("    => SetReport CreateNewEffect:", USB_ControlRequest.wValue & 0xFF, data, len);
@@ -385,37 +389,42 @@ void HID_Task(void)
 
 		uint8_t out_ffbdata[64];	// enough for any single OUT-report
 		uint8_t total_bytes_read = 0;
+#ifdef DEBUG_ENABLE_USB
+		const uint8_t max_report_id = OUT_REPORT_ID_MAX + 1;	// 15 is the spoofed Create New Effect
+#else
+		const uint8_t max_report_id = OUT_REPORT_ID_MAX;
+#endif
 
 		while (Endpoint_BytesInEndpoint() && total_bytes_read < 64)
 			{
-			uint16_t out_wait_report_bytes = 0, out_report_data_read = 0;
+			uint16_t out_wait_report_bytes = 0;
 
 			// Read the reportID from the package to determine amount of data to expect next
-			while (Endpoint_Read_Stream_LE(&out_ffbdata, 1, NULL)
-					 == ENDPOINT_RWSTREAM_IncompleteTransfer)
-				{	// busy loop until the first byte is read out
-				}
+			Endpoint_Read_Stream_LE(&out_ffbdata, 1, NULL);
 
 			total_bytes_read += 1;
 
-			out_wait_report_bytes = OutReportSize[out_ffbdata[0]-1] - 1;
-			if (out_wait_report_bytes + total_bytes_read >= 64)
+			// Drop the rest of the packet on an unknown report id (its size is unknown) or a
+			// short report (reading on would block for the next packet and splice it in).
+			if (out_ffbdata[0] == 0 || out_ffbdata[0] > max_report_id || OutReportSize[out_ffbdata[0]-1] == 0)
 				{
-				while (1)  {
+				Endpoint_ClearOUT();
 				LEDs_SetAllLEDs(LEDS_NO_LEDS);
-				_delay_ms(100);
-				LEDs_SetAllLEDs(LEDS_ALL_LEDS);
-				_delay_ms(100); }
+				return;
+				}
+
+			out_wait_report_bytes = OutReportSize[out_ffbdata[0]-1] - 1;
+			if (Endpoint_BytesInEndpoint() < out_wait_report_bytes)
+				{
+				Endpoint_ClearOUT();
+				LEDs_SetAllLEDs(LEDS_NO_LEDS);
+				return;
 				}
 //			LogTextP(PSTR("Starting to read new report (reportId, bytesToWait)"));
 //			LogBinary(out_ffbdata, 1);
 //			LogBinary((uint8_t*) &out_wait_report_bytes, 2);
 
-			out_report_data_read = 0;
-			while (Endpoint_Read_Stream_LE(&out_ffbdata[1], out_wait_report_bytes, NULL)
-					== ENDPOINT_RWSTREAM_IncompleteTransfer)
-				{	// busy loop until the rest of the report data is read out
-				}
+			Endpoint_Read_Stream_LE(&out_ffbdata[1], out_wait_report_bytes, NULL);
 
 //			LogData("Read OUT data:", out_ffbdata[0], &out_ffbdata[1], out_wait_report_bytes);
 			total_bytes_read += out_wait_report_bytes;
