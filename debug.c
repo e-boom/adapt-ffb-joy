@@ -264,7 +264,7 @@ void FlushDebugBuffer(void)
 	Endpoint_SelectEndpoint(CDC1_TX_EPNUM);
 
 	// Write the String to the Endpoint
-	Endpoint_Write_Stream_LE(&debug_buffer, len, NULL);
+	Endpoint_Write_Stream_LE((const void*) debug_buffer, len, NULL);	// the buffer is volatile, the stream API is not
 
 	// Finalize the stream transfer to send the last packet
 	Endpoint_ClearIN();

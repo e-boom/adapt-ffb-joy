@@ -244,14 +244,12 @@ int FfbwheelSetEffect(
 	case USB_EFFECT_RAMP:
 	{
 		midi_data_len = sizeof(cmd_f0_wave_t);
-		cmd_f0_wave_t* midi_data = (cmd_f0_wave_t*)e->data;
 	}
 	break;
 	
 	case USB_EFFECT_CONSTANT:
 	{
 		midi_data_len = sizeof(cmd_f0_constant_force_t);
-		cmd_f0_constant_force_t* midi_data = (cmd_f0_constant_force_t*)e->data;
 	}
 	break;
 
@@ -262,7 +260,6 @@ int FfbwheelSetEffect(
 	case USB_EFFECT_FRICTION:
 	{
 		midi_data_len = sizeof(cmd_f0_friction_t);
-		cmd_f0_friction_t* midi_data = (cmd_f0_friction_t*)e->data;
 	}
 	break;
 	
@@ -346,9 +343,6 @@ void FfbwheelCreateNewEffect(
 	break;
 	
 	case USB_EFFECT_CONSTANT:
-	{
-		cmd_f0_constant_force_t* midi_data = (cmd_f0_constant_force_t*)effect->data;
-	}
 	break;
 
 	case USB_EFFECT_SPRING:
