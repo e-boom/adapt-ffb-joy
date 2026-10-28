@@ -51,11 +51,12 @@ void CDC1_Task(void);
  */
 
 
-
+#ifdef ENABLE_JOYSTICK_SERIAL
 static CDC_LineEncoding_t LineEncoding1 = { .BaudRateBPS = 0,
                                             .CharFormat  = CDC_LINEENCODING_OneStopBit,
                                             .ParityType  = CDC_PARITY_None,
                                             .DataBits    = 8                            };
+#endif // ENABLE_JOYSTICK_SERIAL
 
 
 /** Main program entry point. This routine configures the hardware required by the application, then
@@ -147,18 +148,14 @@ void EVENT_USB_Device_ConfigurationChanged(void)
 	                                            CDC_TXRX_EPSIZE, ENDPOINT_BANK_SINGLE);
 	ConfigSuccess &= Endpoint_ConfigureEndpoint(CDC1_NOTIFICATION_EPNUM, EP_TYPE_INTERRUPT, ENDPOINT_DIR_IN,
 	                                            CDC_NOTIFICATION_EPSIZE, ENDPOINT_BANK_SINGLE);
-#endif // ENABLE_JOYSTICK_SERIAL
 
 	/* Reset line encoding baud rates so that the host knows to send new values */
 	LineEncoding1.BaudRateBPS = 0;
+#endif // ENABLE_JOYSTICK_SERIAL
 
 	/* Indicate endpoint configuration success or failure */
 	LEDs_SetAllLEDs(ConfigSuccess ? LEDS_NO_LEDS : LEDS_ALL_LEDS);
 	}
-
-
-volatile bool sPIDStatusPending = false;
-volatile USB_FFBReport_PIDStatus_Input_Data_t sPIDStatus;
 
 
 /** Event handler for the USB_ControlRequest event. This is used to catch and process control requests sent to
@@ -406,14 +403,14 @@ void HID_Task(void)
 
 			// Drop the rest of the packet on an unknown report id (its size is unknown) or a
 			// short report (reading on would block for the next packet and splice it in).
-			if (out_ffbdata[0] == 0 || out_ffbdata[0] > max_report_id || OutReportSize[out_ffbdata[0]-1] == 0)
+			if (out_ffbdata[0] == 0 || out_ffbdata[0] > max_report_id || pgm_read_byte(&OutReportSize[out_ffbdata[0]-1]) == 0)
 				{
 				Endpoint_ClearOUT();
 				LEDs_SetAllLEDs(LEDS_NO_LEDS);
 				return;
 				}
 
-			out_wait_report_bytes = OutReportSize[out_ffbdata[0]-1] - 1;
+			out_wait_report_bytes = pgm_read_byte(&OutReportSize[out_ffbdata[0]-1]) - 1;
 			if (Endpoint_BytesInEndpoint() < out_wait_report_bytes)
 				{
 				Endpoint_ClearOUT();

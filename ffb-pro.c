@@ -32,27 +32,28 @@
 #include <util/delay.h>
 #include "debug.h"
 
+// The constant tables live in flash (avr-gcc would copy them to RAM): read with pgm_read_byte
+static const uint8_t usbToMidiEffectType[] PROGMEM = {
+	0x12,	// Constant,
+	0x06, 	// Ramp
+	0x05, 	// Square
+	0x02, 	// Sine
+	0x08,	// Triangle
+	0x0A,	// SawtoothDown
+	0x0B,	// SawtoothUp
+	0x0D,	// Spring
+	0x0E,	// Damper
+	0x0F,	// Inertia
+	0x10,	// Friction
+	0x01 	// Custom ?
+};
+
 uint8_t FfbproUsbToMidiEffectType(uint8_t usb_effect_type)
 {
-	const uint8_t usbToMidiEffectType[] = {
-		0x12,	// Constant, 
-		0x06, 	// Ramp
-		0x05, 	// Square
-		0x02, 	// Sine
-		0x08,	// Triangle
-		0x0A,	// SawtoothDown
-		0x0B,	// SawtoothUp
-		0x0D,	// Spring
-		0x0E,	// Damper
-		0x0F,	// Inertia
-		0x10,	// Friction
-		0x01 	// Custom ?
-	};
-	
 	if (usb_effect_type >= sizeof(usbToMidiEffectType))
 		return 0;
 		
-	return usbToMidiEffectType[usb_effect_type];
+	return pgm_read_byte(&usbToMidiEffectType[usb_effect_type]);
 }
 
 uint8_t FfbproEffectMemFull(uint8_t new_midi_type)
@@ -110,52 +111,52 @@ static void FfbproInitPulses(uint8_t count)
 	}
 }
 
+static const uint8_t startupFfbData_0[] PROGMEM = {
+	0xc5, 0x01        // <ProgramChange> 0x01
+};
+
+static const uint8_t startupFfbData_1[] PROGMEM = {
+	0xf0,
+	0x00, 0x01, 0x0a, 0x01, 0x10, 0x05, 0x6b,  // ???? - reset all?
+	0xf7
+};
+
+static const uint8_t startupFfbData_2[] PROGMEM = {
+	0xb5, 0x40, 0x7f,  // <ControlChange>(Modify, 0x7f)
+	0xa5, 0x72, 0x57,  // offset 0x72 := 0x57
+	0xb5, 0x44, 0x7f,
+	0xa5, 0x3c, 0x43,
+	0xb5, 0x48, 0x7f,
+	0xa5, 0x7e, 0x00,
+	0xb5, 0x4c, 0x7f,
+	0xa5, 0x04, 0x00,
+	0xb5, 0x50, 0x7f,
+	0xa5, 0x02, 0x00,
+	0xb5, 0x54, 0x7f,
+	0xa5, 0x02, 0x00,
+	0xb5, 0x58, 0x7f,
+	0xa5, 0x00, 0x7e,
+	0xb5, 0x5c, 0x7f,
+	0xa5, 0x3c, 0x00,
+	0xb5, 0x60, 0x7f
+};
+
+static const uint8_t startupFfbData_3[] PROGMEM = {
+	0xa5, 0x14, 0x65,
+	0xb5, 0x64, 0x7f,
+	0xa5, 0x7e, 0x6b,
+	0xb5, 0x68, 0x7f,
+	0xa5, 0x36, 0x00,
+	0xb5, 0x6c, 0x7f,
+	0xa5, 0x28, 0x00,
+	0xb5, 0x70, 0x7f,
+	0xa5, 0x66, 0x4c,
+	0xb5, 0x74, 0x7f,
+	0xa5, 0x7e, 0x01,
+};
+
 void FfbproEnableInterrupts(void)
 {
-	const uint8_t startupFfbData_0[] = {
-		0xc5, 0x01        // <ProgramChange> 0x01
-	};
-
-	const uint8_t startupFfbData_1[] = {
-		0xf0,
-		0x00, 0x01, 0x0a, 0x01, 0x10, 0x05, 0x6b,  // ???? - reset all?
-		0xf7
-	};
-
-	const uint8_t startupFfbData_2[] = {
-		0xb5, 0x40, 0x7f,  // <ControlChange>(Modify, 0x7f)
-		0xa5, 0x72, 0x57,  // offset 0x72 := 0x57
-		0xb5, 0x44, 0x7f,
-		0xa5, 0x3c, 0x43,
-		0xb5, 0x48, 0x7f,
-		0xa5, 0x7e, 0x00,
-		0xb5, 0x4c, 0x7f,
-		0xa5, 0x04, 0x00,
-		0xb5, 0x50, 0x7f,
-		0xa5, 0x02, 0x00,
-		0xb5, 0x54, 0x7f,
-		0xa5, 0x02, 0x00,
-		0xb5, 0x58, 0x7f,
-		0xa5, 0x00, 0x7e,
-		0xb5, 0x5c, 0x7f,
-		0xa5, 0x3c, 0x00,
-		0xb5, 0x60, 0x7f
-	};
-
-	const uint8_t startupFfbData_3[] = {
-		0xa5, 0x14, 0x65,
-		0xb5, 0x64, 0x7f,
-		0xa5, 0x7e, 0x6b,
-		0xb5, 0x68, 0x7f,
-		0xa5, 0x36, 0x00,
-		0xb5, 0x6c, 0x7f,
-		0xa5, 0x28, 0x00,
-		0xb5, 0x70, 0x7f,
-		0xa5, 0x66, 0x4c,
-		0xb5, 0x74, 0x7f,
-		0xa5, 0x7e, 0x01,
-	};
-
     WaitMs(100);
 
 	FfbPulseX1();
@@ -179,44 +180,44 @@ void FfbproEnableInterrupts(void)
 	FfbproInitPulses(2);
 	
 	// -- START MIDI
-	FfbSendData(startupFfbData_0, sizeof(startupFfbData_0));	// Program change
+	FfbSendData_P(startupFfbData_0, sizeof(startupFfbData_0));	// Program change
 	WaitMs(20);
 
-	FfbSendData(startupFfbData_1, sizeof(startupFfbData_1));	// Init
+	FfbSendData_P(startupFfbData_1, sizeof(startupFfbData_1));	// Init
 	WaitMs(57);
 
-	FfbSendData(startupFfbData_2, sizeof(startupFfbData_2));	// Initialize effects data memory
-	FfbSendData(startupFfbData_3, sizeof(startupFfbData_3));	// Initialize effects data memory
+	FfbSendData_P(startupFfbData_2, sizeof(startupFfbData_2));	// Initialize effects data memory
+	FfbSendData_P(startupFfbData_3, sizeof(startupFfbData_3));	// Initialize effects data memory
 
 	FfbproDeviceControl(USB_DCTRL_RESET); // Leave auto centre on
 	WaitMs(70);
 	
 	}
 
+/*
+USB_DCTRL_ACTUATORS_ENABLE	0x01
+USB_DCTRL_ACTUATORS_DISABLE	0x02
+USB_DCTRL_STOPALL			0x03
+USB_DCTRL_RESET				0x04
+USB_DCTRL_PAUSE				0x05
+USB_DCTRL_CONTINUE			0x06
+*/
+static const uint8_t usbToMidiControl[] PROGMEM = {
+	0x02, 	// Enable Actuators
+	0x03, 	// Disable Actuators (time stepping continues in background)
+	0x06, 	// Stop All (including stop auto centre)
+	0x01,	// Reset  (stop all effects; free all effects; reset device gain to max; enable actuators; continue; enable auto spring centre)
+	0x05,	// Pause (time stepping is paused)
+	0x04,	// Continue
+};
+
 uint8_t FfbproDeviceControl(uint8_t usb_control)
 {
-	/*
-	USB_DCTRL_ACTUATORS_ENABLE	0x01
-	USB_DCTRL_ACTUATORS_DISABLE	0x02 
-	USB_DCTRL_STOPALL			0x03 
-	USB_DCTRL_RESET				0x04
-	USB_DCTRL_PAUSE				0x05
-	USB_DCTRL_CONTINUE			0x06
-	*/
-	const uint8_t usbToMidiControl[] = {
-		0x02, 	// Enable Actuators
-		0x03, 	// Disable Actuators (time stepping continues in background)		
-		0x06, 	// Stop All (including stop auto centre)
-		0x01,	// Reset  (stop all effects; free all effects; reset device gain to max; enable actuators; continue; enable auto spring centre)
-		0x05,	// Pause (time stepping is paused)
-		0x04,	// Continue
-	};	
-	
 	if (usb_control < 1 || usb_control > 6)
 		return 0; //not supported
-	
+
 	uint8_t command[2] = {0xc5};
-	command[1] = usbToMidiControl[usb_control-1];
+	command[1] = pgm_read_byte(&usbToMidiControl[usb_control-1]);
 	FfbSendData(command, sizeof(command));
 	//Is a wait needed here?
 	return 1; //supported command
@@ -224,6 +225,7 @@ uint8_t FfbproDeviceControl(uint8_t usb_control)
 
 const uint8_t* FfbproGetSysExHeader(uint8_t* hdr_len)
 {
+	// Stays in RAM: FfbSendSysEx sends it with FfbSendData
 	static const uint8_t header[] = {0xf0, 0x00, 0x01, 0x0a, 0x01};
 	*hdr_len = sizeof(header);
 	return header;
@@ -297,10 +299,10 @@ static uint16_t FfbproConvertDirection(uint8_t usbdir, uint8_t reciprocal)
 	return (direction & 0x7F) + ( (direction & 0x0180) << 1 );
 }
 
-static uint8_t FfbproModifyParamRange(volatile TEffectState* effect, uint8_t effectId, int8_t offset)
+static uint8_t FfbproModifyParamRange(TEffectState* effect, uint8_t effectId, int8_t offset)
 {
 
-	volatile FFP_MIDI_Effect_Basic *midi_data = (volatile FFP_MIDI_Effect_Basic *)&effect->data;
+	FFP_MIDI_Effect_Basic *midi_data = (FFP_MIDI_Effect_Basic *)&effect->data;
 
 	FFP_Share_Periodic_Ramp *effect_share = (FFP_Share_Periodic_Ramp *)&effect->share_data;
 	
@@ -373,9 +375,9 @@ static uint16_t FfbproCalcFadeTime(uint16_t usb_duration, uint16_t usb_fadeTime,
 }
 
 // Offset narrows the range, so magnitude and envelope levels are rescaled to it
-static void FfbproSetRangeAndLevels(volatile TEffectState* effect, uint8_t eid, int8_t offset, uint8_t usb_magnitude)
+static void FfbproSetRangeAndLevels(TEffectState* effect, uint8_t eid, int8_t offset, uint8_t usb_magnitude)
 {
-	volatile FFP_MIDI_Effect_Basic *midi_data = (volatile FFP_MIDI_Effect_Basic *)&effect->data;
+	FFP_MIDI_Effect_Basic *midi_data = (FFP_MIDI_Effect_Basic *)&effect->data;
 
 	FFP_Share_Periodic_Ramp *effect_share = (FFP_Share_Periodic_Ramp *)&effect->share_data;
 
@@ -397,7 +399,7 @@ static void FfbproSetRangeAndLevels(volatile TEffectState* effect, uint8_t eid, 
 
 void FfbproSetEnvelope(
 	USB_FFBReport_SetEnvelope_Output_Data_t* data,
-	volatile TEffectState* effect)
+	TEffectState* effect)
 {
 	uint8_t eid = data->effectBlockIndex;
 	
@@ -443,7 +445,7 @@ void FfbproSetEnvelope(
 		FlushDebugBuffer();
 		}
 		
-	volatile FFP_MIDI_Effect_Basic *midi_data = (volatile FFP_MIDI_Effect_Basic *)&effect->data;
+	FFP_MIDI_Effect_Basic *midi_data = (FFP_MIDI_Effect_Basic *)&effect->data;
 	
 	FFP_Share_Basic_common_t *effect_share = (FFP_Share_Basic_common_t *)&effect->share_data;	
 
@@ -465,10 +467,10 @@ void FfbproSetEnvelope(
 
 void FfbproSetCondition(
 	USB_FFBReport_SetCondition_Output_Data_t* data,
-	volatile TEffectState* effect)
+	TEffectState* effect)
 {
 	uint8_t eid = data->effectBlockIndex;
-	volatile FFP_MIDI_Effect_Basic *common_midi_data = (volatile FFP_MIDI_Effect_Basic *)&effect->data;
+	FFP_MIDI_Effect_Basic *common_midi_data = (FFP_MIDI_Effect_Basic *)&effect->data;
 
 	FFP_Share_Condition *effect_share = (FFP_Share_Condition *)&effect->share_data;
 	/*
@@ -503,7 +505,7 @@ void FfbproSetCondition(
 		case 0x0e:	// damper (midi: 0x0e)
 		case 0x0f:	// inertia (midi: 0x0f)
 		{
-			volatile FFP_MIDI_Effect_Spring_Inertia_Damper *midi_data =
+			FFP_MIDI_Effect_Spring_Inertia_Damper *midi_data =
 				(FFP_MIDI_Effect_Spring_Inertia_Damper *)&effect->data;
 			
 			uint16_t midi_offsetAxis1;
@@ -532,7 +534,7 @@ void FfbproSetCondition(
 		
 		case 0x10:	// friction (midi: 0x10)
 		{
-			volatile FFP_MIDI_Effect_Friction *midi_data =
+			FFP_MIDI_Effect_Friction *midi_data =
 					(FFP_MIDI_Effect_Friction *)&effect->data;
 
 			if (data->parameterBlockOffset == 0) {
@@ -554,7 +556,7 @@ void FfbproSetCondition(
 
 void FfbproSetPeriodic(
 	USB_FFBReport_SetPeriodic_Output_Data_t* data,
-	volatile TEffectState* effect)
+	TEffectState* effect)
 {
 	uint8_t eid = data->effectBlockIndex;
 
@@ -583,7 +585,7 @@ void FfbproSetPeriodic(
 		FlushDebugBuffer();
 		}
 	
-	volatile FFP_MIDI_Effect_Basic *midi_data = (volatile FFP_MIDI_Effect_Basic *)&effect->data;
+	FFP_MIDI_Effect_Basic *midi_data = (FFP_MIDI_Effect_Basic *)&effect->data;
 
 	FFP_Share_Periodic_Ramp *effect_share = (FFP_Share_Periodic_Ramp *)&effect->share_data;
 
@@ -657,7 +659,7 @@ void FfbproSetPeriodic(
 
 void FfbproSetConstantForce(
 	USB_FFBReport_SetConstantForce_Output_Data_t* data,
-	volatile TEffectState* effect)
+	TEffectState* effect)
 {
 	uint8_t eid = data->effectBlockIndex;
 	/*
@@ -696,7 +698,7 @@ void FfbproSetConstantForce(
 		FlushDebugBuffer();
 		}
 	
-	volatile FFP_MIDI_Effect_Basic *midi_data = (volatile FFP_MIDI_Effect_Basic *)&effect->data;
+	FFP_MIDI_Effect_Basic *midi_data = (FFP_MIDI_Effect_Basic *)&effect->data;
 			
 	FFP_Share_Constant *effect_share = (FFP_Share_Constant *)&effect->share_data;
 	
@@ -724,7 +726,7 @@ void FfbproSetConstantForce(
 
 void FfbproSetRampForce(
 	USB_FFBReport_SetRampForce_Output_Data_t* data,
-	volatile TEffectState* effect)
+	TEffectState* effect)
 {
 	uint8_t eid = data->effectBlockIndex;
 	if (DoDebug(DEBUG_DETAIL))
@@ -765,7 +767,7 @@ void FfbproSetRampForce(
 
 int FfbproSetEffect(
 	USB_FFBReport_SetEffect_Output_Data_t *data,
-	volatile TEffectState* effect
+	TEffectState* effect
 )
 {
 	uint8_t eid = data->effectBlockIndex;
@@ -785,7 +787,7 @@ int FfbproSetEffect(
 		uint8_t	directionY;	// angle (0=0 .. 180=0..360deg)
 	*/
 
-	volatile FFP_MIDI_Effect_Basic *midi_data = (volatile FFP_MIDI_Effect_Basic *)&effect->data;
+	FFP_MIDI_Effect_Basic *midi_data = (FFP_MIDI_Effect_Basic *)&effect->data;
 	uint8_t midi_data_len = sizeof(FFP_MIDI_Effect_Basic); 	// default MIDI data size
 	
 	// Data applying to all effects
@@ -888,7 +890,7 @@ int FfbproSetEffect(
 			*/
 
 			// Friction shares this layout up to coeffAxis1, the only fields written here
-			volatile FFP_MIDI_Effect_Spring_Inertia_Damper *midi_data =
+			FFP_MIDI_Effect_Spring_Inertia_Damper *midi_data =
 				(FFP_MIDI_Effect_Spring_Inertia_Damper *)&effect->data;
 
 			FFP_Share_Condition *effect_share = (FFP_Share_Condition *)&effect->share_data;
@@ -921,7 +923,7 @@ int FfbproSetEffect(
 
 void FfbproCreateNewEffect(
 	USB_FFBReport_CreateNewEffect_Feature_Data_t* inData,
-	volatile TEffectState* effect)
+	TEffectState* effect)
 {
 	/*
 	USB effect data:
@@ -932,7 +934,7 @@ void FfbproCreateNewEffect(
 
 	// Set defaults to the effect data
 
-	volatile FFP_MIDI_Effect_Basic *midi_data = (volatile FFP_MIDI_Effect_Basic *)&effect->data;
+	FFP_MIDI_Effect_Basic *midi_data = (FFP_MIDI_Effect_Basic *)&effect->data;
 
 	midi_data->magnitude = 0x7f;
 	midi_data->frequency = 0x0001;

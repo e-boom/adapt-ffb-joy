@@ -71,8 +71,8 @@ void LogData(const char *text, uint8_t reportId, const void *data, uint16_t len)
 void LogDataLf(const char *text, uint8_t reportId, const void *data, uint16_t len);	// Adds linefeed
 
 // Log all reports found in the given data (may have one or more)
-// The <text> must point to string in program memory.
-void LogReport(const char *text, const uint16_t *reportSizeArray, uint8_t *data, uint16_t len);
+// The <text> and <reportSizeArray> must point to program memory.
+void LogReport(const char *text, const uint8_t *reportSizeArray, uint8_t *data, uint16_t len);
 
 // Debugging utils for USB-serial debugging
 void FlushDebugBuffer(void);

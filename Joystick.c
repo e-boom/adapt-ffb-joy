@@ -44,59 +44,16 @@
 
 const uint8_t INPUT_REPORTID_ALL = 0xFF;
 
-// Code from 3DPVert begins-->
-//------------------------------------------------------------------------------
-// Delay until reading stick after last report was sent
-
- #define READ_DEL	MS2TM( 4.5, 1024 )
- #define IDLE_DEL	MS2TM( 4  , 64 )
-
-
-//------------------------------------------------------------------------------
-
-uint8_t
-    sw_reportsz ;				// Size of SW report in bytes
-
-uint8_t
-    idle_rate,					// idle rate in 4ms clicks, 0 for indefinite
-    idle_cnt,					// idle timer (count down)
-    sw_repsav[SW_REPSZ_3DP + ADDED_REPORT_DATA_SIZE] ;			// USB report data saved
-
-//------------------------------------------------------------------------------
-// Check if current report differs from the last saved one and save it.
-
-static uint8_t sw_repchg ( void )
-{
-    uint8_t
-	r = FALSE,
-	i = sw_reportsz ;
-
-    for ( ; i-- ; )
-	if ( sw_repsav[i] != sw_report[i] )
-	{
-	    sw_repsav[i] = sw_report[i] ;
-	    r = TRUE ;
-	}
-
-    return ( r ) ;
-}
-// <--- Code from 3DPVert ends
-
 
 /** Configures the board hardware and chip peripherals for the joystick's functionality. */
 void Joystick_Init(void)
 	{
-    uint8_t sw_sendrep ;
-
     // Initialize..
 
     init_hw() ;					// hardware and wait for the stick
-	sw_reportsz = SW_REPSZ_FFP + ADDED_REPORT_DATA_SIZE;
 
     SetTMPS( 1, 64 ) ;				// Set T1 prescaler to /64
     SetTMPS( 0, 1024 ) ;			// Set T0 prescaler to / 1024 for delay
-
-    sw_sendrep = sw_repchg() ;			// Init send report flag, saved report
 
 	WaitMs(1000);
 
@@ -120,25 +77,11 @@ void Joystick_Init(void)
 	ADCSRA |= (1 << ADSC); 		// Go ADC
 	}
 
-/** Configures the board hardware and chip peripherals for the joystick's functionality. */
+/** Always reports the stick as connected: init_hw() has already waited for it. */
 int Joystick_Connect(void)
 	{
 	return 1;
 	}
-
-/** Fills the given HID report data structure with the next HID report to send to the host.
- *
- *  \param[out] outReportData  Pointer to a HID report data structure to be filled
- *
- *  \return Boolean true if the new report differs from the last report, false otherwise
- */
-typedef struct
-	{
-	int16_t 	position;
-	uint16_t 	buttons;
-	uint8_t 	others;
-	uint16_t 	scaler;
-	} JoystickData;
 
 typedef struct
 	{
@@ -148,7 +91,6 @@ typedef struct
 
 static volatile AddedControls_ADC_t added_controls_adc;
 
-static volatile JoystickData prev_joystick_data;
 static volatile uint8_t ADC_is_ready = 0;
 
 
@@ -237,11 +179,15 @@ static uint8_t AxisFilter_Update(AxisFilter_t* filter, uint8_t sample)
 
 
 
+/** Fills the given HID report data structure with the next HID report to send to the host.
+ *
+ *  \param[out] outReportData  Pointer to a HID report data structure to be filled
+ *
+ *  \return Always true: there is no change detection, every call yields a report
+ */
 int Joystick_CreateInputReport(uint8_t inReportId, USB_JoystickReport_Data_t* const outReportData)
 	{
 	// Read the data from the FFP-joystick
-
-	int InputChanged = 1;	// ???? TODO: check for actual changes to avoid unnecessary input reports
 
 #ifndef USE_FAKE_JOYSTICK
 	// Code from 3DPVert begins-->
@@ -375,50 +321,7 @@ int Joystick_CreateInputReport(uint8_t inReportId, USB_JoystickReport_Data_t* co
 		outReportData->Ry = added_controls_adc.trim1;	// elevator trim
 		}
 
-/*
-	// This test code generates ever changing position and button values
-	// to make it easy to see whether the position reports are working
-	// or not even if you don't have an actual joystick or other control
-	// connected.
-
-	prev_joystick_data.scaler++;
-	if (prev_joystick_data.scaler < 200)
-		return false;
-	prev_joystick_data.scaler = 0;
-
-	// "Read" the joystick
-	if (prev_joystick_data.buttons == 0)
-		prev_joystick_data.buttons = 1;
-	else
-		prev_joystick_data.buttons = prev_joystick_data.buttons << 1;
-
-	if (prev_joystick_data.position > 500)
-		prev_joystick_data.position = 0;
-
-	if (prev_joystick_data.position < 500)
-		prev_joystick_data.position++;
-	else
-		prev_joystick_data.position = -500;
-
-
-	LogData("Joy: ", 1, outReportData, sizeof(USB_JoystickReport_Data_t));
-
-	// Clear the report contents
-	memset(outReportData, 0, sizeof(USB_JoystickReport_Data_t));
-
-	outReportData->reportId = 1;
-	outReportData->Button = prev_joystick_data.buttons;
-	outReportData->Y = prev_joystick_data.position;
-	outReportData->X = prev_joystick_data.position;
-	outReportData->Z = prev_joystick_data.position;
-	outReportData->Rz = prev_joystick_data.position & 0x7F;
-	outReportData->Rx = prev_joystick_data.position & 0xFF;
-	outReportData->Ry = prev_joystick_data.position & 0xFF;
-	outReportData->Throttle = prev_joystick_data.position & 0xFF;
-	outReportData->Slider = prev_joystick_data.position & 0xFF;
-	outReportData->Hat = prev_joystick_data.position % 8;
-*/
-	return InputChanged;
+	return 1;
 	}
 
 

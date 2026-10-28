@@ -89,20 +89,12 @@ const FFB_Driver ffb_drivers[2] =
 static const FFB_Driver* ffb;
 
 // Effect management
-volatile uint8_t nextEID = 2;	// FFP effect indexes starts from 2 (yes, we waste memory for two effects...)
-volatile USB_FFBReport_PIDStatus_Input_Data_t pidState;	// For holding device status flags
+uint8_t nextEID = 2;	// FFP effect indexes starts from 2 (yes, we waste memory for two effects...)
+USB_FFBReport_PIDStatus_Input_Data_t pidState;	// For holding device status flags
 
-void SendPidStateForEffect(uint8_t eid, uint8_t effectState);
-void SendPidStateForEffect(uint8_t eid, uint8_t effectState)
-	{
-	pidState.effectBlockIndex = effectState;
+static TEffectState gEffectStates[MAX_EFFECTS+1];	// one for each effect (array index 0 is unused to simplify things)
 
-	pidState.effectBlockIndex = 0;
-	}
-
-static volatile TEffectState gEffectStates[MAX_EFFECTS+1];	// one for each effect (array index 0 is unused to simplify things)
-
-volatile TDisabledEffectTypes gDisabledEffects;
+TDisabledEffectTypes gDisabledEffects;
 
 uint8_t GetNextFreeEffect(void);
 void StartEffect(uint8_t id);
@@ -188,7 +180,7 @@ uint8_t GetMidiEffectType(uint8_t id)
 	if (id > MAX_EFFECTS || gEffectStates[id].state == MEffectState_Free) {
 		return 0xFF; //use this as null value since it can't be a valid value in MIDI
 	} else {
-		volatile TEffectState* effect = &gEffectStates[id];
+		TEffectState* effect = &gEffectStates[id];
 		return ((midi_data_common_t*)effect->data)->waveForm;
 	}
 }
@@ -211,8 +203,8 @@ void FfbSendSysEx(const uint8_t* midi_data, uint8_t len)
 	FfbSendData(&mark, 1);
 }
 
-uint8_t FfbSetParamMidi_14bit(uint8_t effectState, volatile uint16_t* midi_data_param, uint8_t effectId, uint8_t address, uint16_t value)
-	{ // why does midi data need to be volatile? What else can change it?? Are the USB FFB messages not processed sequentially?
+uint8_t FfbSetParamMidi_14bit(uint8_t effectState, uint16_t* midi_data_param, uint8_t effectId, uint8_t address, uint16_t value)
+	{
 	if (value == *midi_data_param)
 		return 0;
 	else
@@ -224,8 +216,8 @@ uint8_t FfbSetParamMidi_14bit(uint8_t effectState, volatile uint16_t* midi_data_
 		}
 	}
 	
-uint8_t FfbSetParamMidi_7bit(uint8_t effectState, volatile uint8_t* midi_data_param, uint8_t effectId, uint8_t address, uint8_t value)
-	{ // why does midi data need to be volatile? What else can change it?? Are the USB FFB messages not processed sequentially?
+uint8_t FfbSetParamMidi_7bit(uint8_t effectState, uint8_t* midi_data_param, uint8_t effectId, uint8_t address, uint8_t value)
+	{
 	if (value == *midi_data_param)
 		return 0;
 	else
@@ -287,8 +279,8 @@ int8_t CalcGainCoeff(int8_t usbValue, uint8_t gain)
 	return ((v * gain) / 255);
 	}
 
-// Lengths of each report type
-const uint16_t OutReportSize[] = {
+// Lengths of each report type, in flash: read with pgm_read_byte
+const uint8_t OutReportSize[] PROGMEM = {
 	sizeof(USB_FFBReport_SetEffect_Output_Data_t),		// 1
 	sizeof(USB_FFBReport_SetEnvelope_Output_Data_t),	// 2
 	sizeof(USB_FFBReport_SetCondition_Output_Data_t),	// 3
@@ -436,7 +428,7 @@ void FfbOnCreateNewEffect(USB_FFBReport_CreateNewEffect_Feature_Data_t* inData, 
 	} else {
 		outData->loadStatus = 1;	// 1=Success,2=Full,3=Error
 		
-		volatile TEffectState* effect = &gEffectStates[outData->effectBlockIndex];
+		TEffectState* effect = &gEffectStates[outData->effectBlockIndex];
 
 		((midi_data_common_t*)effect->data)->waveForm = midi_effect_type;
 		
@@ -461,7 +453,7 @@ void FfbOnCreateNewEffect(USB_FFBReport_CreateNewEffect_Feature_Data_t* inData, 
 
 void FfbHandle_SetEffect(USB_FFBReport_SetEffect_Output_Data_t *data)
 {
-	volatile TEffectState* effect = &gEffectStates[data->effectBlockIndex];
+	TEffectState* effect = &gEffectStates[data->effectBlockIndex];
 	
 	if (DoDebug(DEBUG_DETAIL))
 		{
@@ -789,29 +781,15 @@ void FfbSendData(const uint8_t *data, uint16_t len)
 	for (i = 0; i < len; i++)
 		FfbSendByte(data[i]);
 	}
-	
-void FfbSendPackets(const uint8_t *data, uint16_t len)
+
+// Not logged: LogBinaryLf reads RAM, and flash data is only fixed command sequences
+void FfbSendData_P(const uint8_t *data, uint16_t len)
 	{
 	uint16_t i = 0;
-	while (i < len)
-		{
-		WaitMs(1);
-		uint8_t count = data[i++];
-		while (count--)
-			FfbSendByte(data[i++]);
-		}
+	for (i = 0; i < len; i++)
+		FfbSendByte(pgm_read_byte(&data[i]));
 	}
 
-// ----------------------------------------------
-// Ring buffer for sending MIDI data to joystick
-// ----------------------------------------------
-
-// Buffer for sending data to MIDI
-//#define MIDI_BUFFER_SIZE 128
-
-#ifndef MIDI_BUFFER_SIZE
-
-// Non-buffered MIDI
 void FfbSendByte(uint8_t data)
 	{
 	// Wait if a byte is being transmitted
@@ -820,70 +798,9 @@ void FfbSendByte(uint8_t data)
 	UDR1 = data;
 	}
 
-#else
-
-// Buffered MIDI
-
-volatile uint8_t gMidiBuffer[MIDI_BUFFER_SIZE];
-volatile unit8_t *midi_buffer_head = gMidiBuffer;
-volatile unit8_t *midi_buffer_tail = gMidiBuffer;
-
-void FfbSendByte(uint8_t data)
-	{
-	cli();
-
-	*gMidiBufferHead++ = data;
-
-	if (gMidiBufferHead == gMidiBufferTail)
-		{	// Ouch - buffer overflown!
-
-		return;
-		}
-
-	if (gMidiBufferHead - gMidiBuffer >= MIDI_BUFFER_SIZE)
-		gMidiBufferHead = gMidiBuffer;
-
-	sei();
-	}
-
-
-ISR(USART1_UDRE_vect)
-	{
-	cli();
-
-	uint8_t i;
-
-	if (gMidiBufferHead == gMidiBufferTail)
-		{
-		// Buffer is empty, disable transmit interrupt
-		UCSR1B = (1<<TXCIE1) | (1<<TXEN1);
-		}
-	else 
-		{
-		i = gMidiBufferTail + 1;
-		if (i >= MIDI_BUFFER_SIZE) i = 0;
-		UDR1 = gMidiBuffer[i];
-		gMidiBufferTail = i;
-		}
-
-	sei();
-	}
-#endif // MIDI_BUFFER_SIZE
-
 // ----------------------------------------------
 // Debug and other settings
 // ----------------------------------------------
-
-
-// Send "enable FFB" to joystick
-void FfbSendEnable()
-	{
-	}
-
-// Send "disable FFB" to joystick
-void FfbSendDisable()
-	{
-	}
 
 
 uint8_t FfbDebugListEffects(uint8_t *index)

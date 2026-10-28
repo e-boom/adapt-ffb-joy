@@ -168,7 +168,7 @@ void LogDataLf(const char *text, uint8_t reportId, const void *data, uint16_t le
 	}
 
 // Log all reports found in the given data (may have one or more)
-void LogReport(const char *text, const uint16_t *reportSizeArray, uint8_t *data, uint16_t len)
+void LogReport(const char *text, const uint8_t *reportSizeArray, uint8_t *data, uint16_t len)
 	{
 	if (gDebugMode == DEBUG_TO_NONE)
 		return;
@@ -187,7 +187,7 @@ void LogReport(const char *text, const uint16_t *reportSizeArray, uint8_t *data,
 		{
 		if (p[0] == 0 || p[0] > max_report_id)
 			break;
-		uint8_t replen = reportSizeArray[p[0]-1];
+		uint8_t replen = pgm_read_byte(&reportSizeArray[p[0]-1]);
 		if (replen == 0)
 			break;	// would never advance
 		LogBinary(p, 1);
