@@ -761,8 +761,8 @@ void FfbInitMidi()
 	UCSR1A = 0;	
 	UBRR1 = ((F_CPU/(31250ul<<4))-1);
 
-	// Set frame format to 8 data bits, no parity, 1 stop bit, 1 start bit
-	UCSR1C = (1<<7)|(1<<UCSZ11)|(1<<UCSZ10);
+	// Set frame format to asynchronous 8N1: 8 data bits, no parity, 1 stop bit
+	UCSR1C = (1<<UCSZ11)|(1<<UCSZ10);
 	// Enable transmitter only
 	//UCSR1B = (1 << TXCIE1) | (1<<TXEN1);
 	UCSR1B = (1<<TXEN1);

@@ -121,8 +121,8 @@
 #define PEPU		(PU1( PE6) | PU0( PE2))
 #define DDE		(DDI(DDE6) | DDI(DDE2))
 
-#define PFPU		(PU1( PF7) | PU1( PF6) | PU1( PF5) | PU1( PF4) | \
-						 PU1( PF1) | PU1( PF0))
+#define PFPU		(PU1( PF7) | PU1( PF6) | PU0( PF5) | PU0( PF4) | \
+						 PU0( PF1) | PU0( PF0))
 #define DDF		(DDI(DDF7) | DDI(DDF6) | DDI(DDF5) | DDI(DDF4) | \
 						 DDI(DDF1) | DDI(DDF0))
 #elif defined(__AVR_AT90USBX6__)

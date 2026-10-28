@@ -90,7 +90,7 @@ void Joystick_Init(void)
 
     // Initialize..
 
-    init_hw() ;					// hardware. Note: defined as naked !
+    init_hw() ;					// hardware and wait for the stick
 	sw_reportsz = SW_REPSZ_FFP + ADDED_REPORT_DATA_SIZE;
 
     SetTMPS( 1, 64 ) ;				// Set T1 prescaler to /64
@@ -105,7 +105,8 @@ void Joystick_Init(void)
 
 	// ADC for extra controls
 	DDRF = 0; // all inputs
-//	PORTF |= 0xff; // all pullups enabled
+	PORTF &= ~0x33;	// no pull-ups on the analog pins: a pull-up on a pot wiper skews the reading
+	DIDR0 = (1 << ADC0D) | (1 << ADC1D) | (1 << ADC4D) | (1 << ADC5D);	// digital input buffers off on the analog pins: less power and noise
 
 	// Init and enable ADC
 	ADCSRA |= (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);
@@ -161,9 +162,7 @@ static volatile uint8_t ADC_is_ready = 0;
 //	3. hysteresis: the reported value only changes once the average has moved
 //	   clearly away from it, so it does not flicker between two neighbours
 //
-// The twist is sampled once per report, each pedal once every fourth report.
-//
-// RUDDER_FILTER: 0 reports the raw values as before.
+// RUDDER_FILTER: 0 passes samples through unfiltered.
 // RUDDER_FILTER_SMOOTHING: a new sample weighs 1/2^n in the average, which then
 //	lags about 2^n - 1 samples behind. Higher is calmer but slower to follow
 //	the stick. 0 = no averaging.
@@ -183,9 +182,9 @@ typedef struct
 	uint8_t	history[2];	// the previous two samples, for the median
 	int16_t	average;	// in 1/64 counts
 	uint8_t	output;		// the value currently reported
+	uint8_t	primed;		// set once the state has been seeded from a first sample
 	} AxisFilter_t;
 
-// These start at zero and settle on the real positions within the first second of reports
 static AxisFilter_t twist_filter, pedal1_filter, pedal2_filter;
 
 // Runs one new sample through the filter and returns the value to report.
@@ -193,6 +192,16 @@ static uint8_t AxisFilter_Update(AxisFilter_t* filter, uint8_t sample)
 	{
 	if (!RUDDER_FILTER)
 		return sample;
+
+	// Seed the state from the first sample, so the reports do not ramp up from zero after plug-in
+	if (!filter->primed)
+		{
+		filter->history[0] = filter->history[1] = sample;
+		filter->average = (int16_t) sample << AXIS_FILTER_FRACTION_BITS;
+		filter->output = sample;
+		filter->primed = 1;
+		return sample;
+		}
 
 	// 1. Median of this sample and the previous two
 	uint8_t low = filter->history[0], high = filter->history[1], median;
@@ -325,6 +334,8 @@ int Joystick_CreateInputReport(uint8_t inReportId, USB_JoystickReport_Data_t* co
 		
 	// Convert the raw input data to USB report
 
+	// The caller's report is not cleared, and the wheel fills only some fields
+	memset(outReportData, 0, sizeof(*outReportData));
 	outReportData->reportId = 1;	// Input report ID 1
 
 	if (sw_id == SW_ID_FFPW)
@@ -334,18 +345,19 @@ int Joystick_CreateInputReport(uint8_t inReportId, USB_JoystickReport_Data_t* co
 		outReportData->Y = (sw_report[4] & 0xfc) << 2;
 		/* actually break for wheel */
 		outReportData->Throttle = 63-(sw_report[3] & 0x3f);
+		outReportData->Hat = 8;	// null state: outside the hat's logical range 0..7
 		}
 	else
 		{
 		// Convert data from Sidewinder Force Feedback Pro
 		outReportData->X = sw_report[0] + ((sw_report[1] & 0x03) << 8);
 		if (sw_report[1] & 0x02)
-			outReportData->X |= (0b11111100 << 8);
+			outReportData->X |= 0xFC00u;	// sign-extend the 10-bit value
 		
 		
 		outReportData->Y = (sw_report[1] >> 2) + ((sw_report[2] & 0x0F) << 6);
 		if (sw_report[2] & 0x08)
-			outReportData->Y |= (0b11111100 << 8);
+			outReportData->Y |= 0xFC00u;	// sign-extend the 10-bit value
 		outReportData->Button = ((sw_report[4] & 0x7F) << 2) + ((sw_report[3] & 0xC0) >> 6);
 		outReportData->Hat = sw_report[2] >> 4;
 		// The twist arrives as a signed 6-bit value, centred on the wrap from 63 to 0.

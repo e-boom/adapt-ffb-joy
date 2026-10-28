@@ -89,10 +89,9 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM JoystickReport[] =
 		0x09, 0x33,     //   USAGE (Rx)
 		0x09, 0x34,		//   USAGE (Ry)
 	    HID_RI_LOGICAL_MINIMUM(8, 0),
-	    HID_RI_LOGICAL_MAXIMUM(8, 255),
-        HID_RI_PHYSICAL_MAXIMUM(8, 255),
+	    HID_RI_LOGICAL_MAXIMUM(16, 255),
+        HID_RI_PHYSICAL_MAXIMUM(16, 255),
 	    HID_RI_REPORT_SIZE(8, 0x08),
-        HID_RI_REPORT_SIZE(8, 0x08),
 	    HID_RI_REPORT_COUNT(8, 0x02),
 		HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
 
@@ -101,7 +100,7 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM JoystickReport[] =
 	0x09, 0x36,		//   USAGE (Rudder - hmm...actual rudder code 0xBA does not seem to work in Windows - so use slider)
     HID_RI_LOGICAL_MINIMUM(8, -128),
     HID_RI_LOGICAL_MAXIMUM(8, 127),
-    HID_RI_PHYSICAL_MAXIMUM(8, 255),
+    HID_RI_PHYSICAL_MAXIMUM(16, 255),
     HID_RI_REPORT_SIZE(8, 0x08),
     HID_RI_REPORT_COUNT(8, 0x01),
 	HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
@@ -841,10 +840,9 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM WheelReport[] =
 		0x09, 0x33,     //   USAGE (Rx)
 		0x09, 0x34,		//   USAGE (Ry)
 	    HID_RI_LOGICAL_MINIMUM(8, 0),
-	    HID_RI_LOGICAL_MAXIMUM(8, 255),
-        HID_RI_PHYSICAL_MAXIMUM(8, 255),
+	    HID_RI_LOGICAL_MAXIMUM(16, 255),
+        HID_RI_PHYSICAL_MAXIMUM(16, 255),
 	    HID_RI_REPORT_SIZE(8, 0x08),
-        HID_RI_REPORT_SIZE(8, 0x08),
 	    HID_RI_REPORT_COUNT(8, 0x02),
 		HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
 
@@ -853,7 +851,7 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM WheelReport[] =
 	0x09, 0x36,		//   USAGE (Rudder - hmm...actual rudder code 0xBA does not seem to work in Windows - so use slider)
     HID_RI_LOGICAL_MINIMUM(8, -128),
     HID_RI_LOGICAL_MAXIMUM(8, 127),
-    HID_RI_PHYSICAL_MAXIMUM(8, 255),
+    HID_RI_PHYSICAL_MAXIMUM(16, 255),
     HID_RI_REPORT_SIZE(8, 0x08),
     HID_RI_REPORT_COUNT(8, 0x01),
 	HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
@@ -1579,7 +1577,7 @@ const USB_Descriptor_Configuration_t PROGMEM ConfigurationDescriptor =
 			.ConfigurationNumber    = 1,
 			.ConfigurationStrIndex  = NO_DESCRIPTOR,
 
-			.ConfigAttributes       = (USB_CONFIG_ATTR_RESERVED | USB_CONFIG_ATTR_SELFPOWERED),
+			.ConfigAttributes       = USB_CONFIG_ATTR_RESERVED,
 
 			.MaxPowerConsumption    = USB_CONFIG_POWER_MA(100)
 		},
