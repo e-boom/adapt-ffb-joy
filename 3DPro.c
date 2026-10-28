@@ -294,9 +294,12 @@ void init_hw ( void )
 		Delay_1024( T0DEL200MS ) ;
 							// Try to read a data packet, FFP sends
 		QueryFFP( 0, DATSZFFP + 2 ) ;		// 17 clocks, wheel 12 - let it time out
-		dis3DP_INT() ;				// Freeze sw_clkcnt and ffp_packet
 
+		// Keep INT0 on for another 12ms: a stick that has not been polled for a
+		// while can answer after the query's 400us timeout, and is only detected
+		// if its clocks are still counted. The guard bytes in 3DProasm.S catch them.
 		Flash_LED_12MS() ;
+		dis3DP_INT() ;				// Freeze sw_clkcnt and ffp_packet
 
 		// Analyze clock count
 

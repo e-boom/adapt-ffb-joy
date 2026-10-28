@@ -183,14 +183,14 @@
 ; Note: the guard bytes, ffp_packet and sw_pktstart MUST be in the same 256 byte
 ; RAM segment !! INT0_vect stores through X w/ XH fixed to hi8(sw_pktstart) and
 ; only XL kept in sw_pktptr, and CopyFFPData steps through ffp_packet w/ XL only.
-; .balign 16 puts these 9 bytes into one aligned 16 byte block, which can never
+; .balign 16 puts these 14 bytes into one aligned 16 byte block, which can never
 ; cross a 256 byte boundary.
 ;
 ; Tick n (n = sw_clkcnt before the INT) starts a new byte (st -X) when
-; n mod 8 is 0, 2 or 5. Ticks 0-15 fill ffp_packet[5..0], tick 16 (17th clock
-; of an FFP packet) and tick 17 (last one QueryFFP( 0, DATSZFFP+2 ) waits for)
-; land in the 1st guard byte. The 2nd guard byte catches a tick 18 that sneaks
-; in between the 18th INT and dis3DP_INT(). The swallowed 1st INT (n = 0xFF)
+; n mod 8 is 0, 2 or 5. Ticks 0-15 fill ffp_packet[5..0], ticks 16-31 land in
+; the 6 guard bytes. init_hw() leaves INT0 on for 12ms after its query returns,
+; so clocks past the 18 QueryFFP( 0, DATSZFFP+2 ) waits for still arrive there;
+; the stick sends one 17 clock packet per query. The swallowed 1st INT (n = 0xFF)
 ; ORs into sw_pktstart, i.e. sw_pktptr, which the handler then overwrites.
 
 	.section	.bss,"aw",@nobits
@@ -202,7 +202,7 @@
 
 	.balign 16
 
-	.skip 2,0			; Guard bytes for ticks 16-18
+	.skip 6,0			; Guard bytes for ticks 16-31
 
 ffp_packet:
         .skip 6,0
