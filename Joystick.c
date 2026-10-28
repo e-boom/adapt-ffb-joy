@@ -62,7 +62,7 @@ void Joystick_Init(void)
 
 	// ADC for extra controls
 	DDRF = 0; // all inputs
-	PORTF &= ~0x33;	// no pull-ups on the analog pins: a pull-up on a pot wiper skews the reading
+	PORTF |= 0x33;	// pull-ups on the analog pins: without pots fitted they would float and jitter
 	DIDR0 = (1 << ADC0D) | (1 << ADC1D) | (1 << ADC4D) | (1 << ADC5D);	// digital input buffers off on the analog pins: less power and noise
 
 	// Init and enable ADC
