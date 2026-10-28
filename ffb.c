@@ -137,10 +137,12 @@ uint8_t GetNextFreeEffect(void)
 	return id;
 	}
 
+// Id 0x7F stops every effect in one message; MIDI sends block, so no per-slot stops
 void StopAllEffects(void)
 	{
-	for (uint8_t id = 1; id <= MAX_EFFECTS; id++)
-		StopEffect(id);
+	for (uint8_t id = 2; id <= MAX_EFFECTS; id++)
+		gEffectStates[id].state &= ~MEffectState_Playing;
+	ffb->StopEffect(0x7F);	// TODO: wheel ?
 	}
 
 void StartEffect(uint8_t id)
@@ -268,7 +270,14 @@ int16_t UsbInt8ToMidiInt14(int8_t inUsbValue)
 uint16_t UsbPeriodToFrequencyHz(uint16_t period)
 	{
 	//USB Period in ms to Frequency in Hz
-	return ((2000 / period) + 1) / 2; //Rounds to nearest Hz i.e. 1.51Hz rounds up to 2Hz
+	if (period == 0)
+		return 1;
+
+	uint16_t frequency = ((2000 / period) + 1) / 2; //Rounds to nearest Hz i.e. 1.51Hz rounds up to 2Hz
+	if (frequency == 0)
+		return 1;	// periods over 2 s would round to 0 Hz
+
+	return frequency;
 	}
 
 // Calculates the final value of the given coefficient <value> when taking in given <gain> into account.
@@ -486,6 +495,8 @@ void FfbHandle_SetEffect(USB_FFBReport_SetEffect_Output_Data_t *data)
 		midi_duration = MIDI_DURATION_INFINITE;
 	} else {
 		midi_duration = UsbUint16ToMidiUint14_Time(data->duration); // MIDI unit is 2ms
+		if (midi_duration == MIDI_DURATION_INFINITE)
+			midi_duration = 1;	// a 0 or 1 ms effect must not become infinite
 	}
 	
 	ffb->ModifyDuration(effect->state, &(midi_data->duration), data->effectBlockIndex, midi_duration);
@@ -508,6 +519,7 @@ void FfbOnPIDPool(USB_FFBReport_PIDPool_Feature_Data_t *data)
 		}
 
 	FreeAllEffects();
+	ffb->FreeEffect(0x7f);	// keep the stick's ids in step with the adapter's
 
 	data->reportId = 7;
 	data->ramPoolSize = 0xFFFF;
@@ -563,14 +575,12 @@ void FfbHandle_EffectOperation(USB_FFBReport_EffectOperation_Output_Data_t *data
 
 		// Stop all first
 		StopAllEffects();
-		if (!disabled)
-			ffb->StopEffect(0x7F); // TODO: wheel ?
 
 		// Then start the given effect
 		StartEffect(data->effectBlockIndex);
 
 		if (!disabled)
-			ffb->StartEffect(0x7F);	// TODO: wheel ?
+			ffb->StartEffect(eid);
 		}
 	else if (data->operation == 3)
 		{	// Stop

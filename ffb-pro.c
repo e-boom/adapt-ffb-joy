@@ -69,6 +69,7 @@ uint8_t FfbproEffectMemFull(uint8_t new_midi_type)
 			case 0x06:
 			case 0x05:
 			case 0x02:
+			case 0x03:	// cosine, from SetPeriodic's phase mapping
 			case 0x08:
 			case 0x0A:
 			case 0x0B:
@@ -354,6 +355,46 @@ static uint16_t FfbproCalcSampleRate(uint16_t usb_samplePeriod, uint16_t frequen
 	}
 }
 
+// MIDI fadeTime is when the fade starts, so it depends on the duration as well
+static uint16_t FfbproCalcFadeTime(uint16_t usb_duration, uint16_t usb_fadeTime, uint16_t midi_duration)
+{
+	if (usb_duration == USB_DURATION_INFINITE || usb_fadeTime == USB_DURATION_INFINITE)
+		return MIDI_DURATION_INFINITE;
+
+	if (usb_duration > usb_fadeTime)
+	{
+		uint16_t midi_fadeTime = UsbUint16ToMidiUint14_Time(usb_duration - usb_fadeTime);
+		if (midi_fadeTime == MIDI_DURATION_INFINITE)
+			midi_fadeTime = 1;	// a fade starting within 2 ms must not become "never"
+		return midi_fadeTime;
+	}
+
+	return midi_duration;	// fade longer than the effect: start it at the end
+}
+
+// Offset narrows the range, so magnitude and envelope levels are rescaled to it
+static void FfbproSetRangeAndLevels(volatile TEffectState* effect, uint8_t eid, int8_t offset, uint8_t usb_magnitude)
+{
+	volatile FFP_MIDI_Effect_Basic *midi_data = (volatile FFP_MIDI_Effect_Basic *)&effect->data;
+
+	FFP_Share_Periodic_Ramp *effect_share = (FFP_Share_Periodic_Ramp *)&effect->share_data;
+
+	// Calculate min max and available range from offset. Then Modify. Invert if needed.
+	uint8_t range = FfbproModifyParamRange(effect, eid, offset);
+
+	FfbSetParamMidi_7bit(effect->state, &(midi_data->magnitude), eid,
+						FFP_MIDI_MODIFY_MAGNITUDE, FfbproCalcLevel(range, usb_magnitude));
+
+	if (range != effect_share->range)
+	{
+		effect_share->range = range;
+		FfbSetParamMidi_7bit(effect->state, &(midi_data->fadeLevel), eid,
+								FFP_MIDI_MODIFY_FADE, FfbproCalcLevel(range, effect_share->usb_fadeLevel));
+		FfbSetParamMidi_7bit(effect->state, &(midi_data->attackLevel), eid,
+								FFP_MIDI_MODIFY_ATTACK, FfbproCalcLevel(range, effect_share->usb_attackLevel));
+	}
+}
+
 void FfbproSetEnvelope(
 	USB_FFBReport_SetEnvelope_Output_Data_t* data,
 	volatile TEffectState* effect)
@@ -410,10 +451,7 @@ void FfbproSetEnvelope(
 	effect_share->usb_fadeLevel = data->fadeLevel;
 	effect_share->usb_fadeTime = data->fadeTime;
 
-	if (data->fadeTime == USB_DURATION_INFINITE) // is this check needed? Only if duration is not INF but fadeTime is INF - can this occur?
-		midi_fadeTime = MIDI_DURATION_INFINITE;
-	else
-		midi_fadeTime = UsbUint16ToMidiUint14_Time(effect_share->usb_duration - effect_share->usb_fadeTime); 
+	midi_fadeTime = FfbproCalcFadeTime(effect_share->usb_duration, effect_share->usb_fadeTime, midi_data->duration);
 
 	FfbSetParamMidi_14bit(effect->state, &(midi_data->fadeTime), eid, 
 							FFP_MIDI_MODIFY_FADETIME, midi_fadeTime);
@@ -613,24 +651,8 @@ void FfbproSetPeriodic(
 			}
 		}
 	}
-	
-	// Calculate min max and available range from offset. Then Modify. Invert if needed.
-	uint8_t range = FfbproModifyParamRange(effect, eid, data->offset);
-	
-	// Calculate magnitude relative to available range
-	FfbSetParamMidi_7bit(effect->state, &(midi_data->magnitude), eid, 
-						FFP_MIDI_MODIFY_MAGNITUDE, FfbproCalcLevel(range, data->magnitude));
-	
-	// Check whether envelope levels need to be updated too
-	if (range != effect_share->range)	
-	{	
-		effect_share->range = range;
-		FfbSetParamMidi_7bit(effect->state, &(midi_data->fadeLevel), eid, 
-								FFP_MIDI_MODIFY_FADE, FfbproCalcLevel(range, effect_share->usb_fadeLevel));
-		FfbSetParamMidi_7bit(effect->state, &(midi_data->attackLevel), eid, 
-								FFP_MIDI_MODIFY_ATTACK, FfbproCalcLevel(range, effect_share->usb_attackLevel));		
-	}
-								
+
+	FfbproSetRangeAndLevels(effect, eid, data->offset, data->magnitude);
 }
 
 void FfbproSetConstantForce(
@@ -724,8 +746,6 @@ void FfbproSetRampForce(
 		int8_t	end;
 	*/
 	
-	volatile FFP_MIDI_Effect_Basic *midi_data = (volatile FFP_MIDI_Effect_Basic *)&effect->data;
-	
 	FFP_Share_Periodic_Ramp *effect_share = (FFP_Share_Periodic_Ramp *)&effect->share_data;
 
 	// Same approach as periodic waveforms
@@ -740,25 +760,7 @@ void FfbproSetRampForce(
 		magnitude = data->end - data->start;
 	}
 
-
-	// Calculate min max and available range from offset. Then Modify. Invert if needed.
-	uint8_t range = FfbproModifyParamRange(effect, eid, offset);
-	
-	
-	// Calculate magnitude relative to available range
-	FfbSetParamMidi_7bit(effect->state, &(midi_data->magnitude), eid, 
-						FFP_MIDI_MODIFY_MAGNITUDE, FfbproCalcLevel(range, magnitude));
-	
-	// Check whether envelope levels need to be updated too
-	if (range != effect_share->range)	
-	{	
-		effect_share->range = range;
-		FfbSetParamMidi_7bit(effect->state, &(midi_data->fadeLevel), eid, 
-								FFP_MIDI_MODIFY_FADE, FfbproCalcLevel(range, effect_share->usb_fadeLevel));
-		FfbSetParamMidi_7bit(effect->state, &(midi_data->attackLevel), eid, 
-								FFP_MIDI_MODIFY_ATTACK, FfbproCalcLevel(range, effect_share->usb_attackLevel));		
-	}
-
+	FfbproSetRangeAndLevels(effect, eid, offset, magnitude);
 }
 
 int FfbproSetEffect(
@@ -848,24 +850,10 @@ int FfbproSetEffect(
 			
 			// Recalculate fadeTime for MIDI since change to duration changes the fadeTime too
 			effect_share->usb_duration = data->duration;	// store for later calculation of <fadeTime>
-			
-			uint16_t midi_fadeTime;
-			if (data->duration == USB_DURATION_INFINITE) {
-				midi_fadeTime = MIDI_DURATION_INFINITE;
-			} else {
-				if (effect_share->usb_fadeTime == USB_DURATION_INFINITE) {
-					midi_fadeTime = MIDI_DURATION_INFINITE;
-				} else {
-					if (data->duration > effect_share->usb_fadeTime) {
-						// add some safety and special case handling
-						midi_fadeTime = UsbUint16ToMidiUint14_Time(data->duration - effect_share->usb_fadeTime);
-					} else {
-						midi_fadeTime = midi_data->duration;
-					}
-				}
-			}			
-			FfbSetParamMidi_14bit(effect->state, &(midi_data->fadeTime), eid, 
-								FFP_MIDI_MODIFY_FADETIME, midi_fadeTime);
+
+			FfbSetParamMidi_14bit(effect->state, &(midi_data->fadeTime), eid,
+								FFP_MIDI_MODIFY_FADETIME,
+								FfbproCalcFadeTime(data->duration, effect_share->usb_fadeTime, midi_data->duration));
 								
 			if (!is_constant)
 			{
@@ -884,36 +872,6 @@ int FfbproSetEffect(
 		case USB_EFFECT_SPRING:
 		case USB_EFFECT_DAMPER:
 		case USB_EFFECT_INERTIA:
-		{
-			/*
-			MIDI effect data:
-				uint8_t command;	// always 0x23	-- start counting checksum from here
-				uint8_t waveForm;	// 2=sine, 5=Square, 6=RampUp, 7=RampDown, 8=Triange, 0x12=Constant
-				uint8_t unknown1;	// ? always 0x7F
-				uint16_t duration;	// unit=2ms
-				uint16_t triggerButton;	// Bitwise buttons 1 to 9 from LSB
-				uint16_t coeffAxis0;
-				uint16_t coeffAxis1;
-				uint16_t offsetAxis0;
-				uint16_t offsetAxis1;
-			*/
-
-			volatile FFP_MIDI_Effect_Spring_Inertia_Damper *midi_data =
-				(FFP_MIDI_Effect_Spring_Inertia_Damper *)&effect->data;
-
-			FFP_Share_Condition *effect_share = (FFP_Share_Condition *)&effect->share_data;
-			
-			effect_share->usb_gain = data->gain;			//Scale coefficients by gain since FFP conditional effects don't have gain parameter
-			FfbSetParamMidi_14bit(effect->state, &(midi_data->coeffAxis0), eid, 
-						FFP_MIDI_MODIFY_COEFFAXIS0, UsbInt8ToMidiInt14(CalcGainCoeff(effect_share->usb_coeffAxis0, data->gain)));
-			FfbSetParamMidi_14bit(effect->state, &(midi_data->coeffAxis1), eid, 
-						FFP_MIDI_MODIFY_COEFFAXIS1, UsbInt8ToMidiInt14(CalcGainCoeff(effect_share->usb_coeffAxis1, data->gain)));
-						
-			midi_data_len = sizeof(FFP_MIDI_Effect_Spring_Inertia_Damper);
-			
-		}
-		break;
-		
 		case USB_EFFECT_FRICTION:
 		{
 			/*
@@ -925,19 +883,26 @@ int FfbproSetEffect(
 				uint16_t triggerButton;	// Bitwise buttons 1 to 9 from LSB
 				uint16_t coeffAxis0;
 				uint16_t coeffAxis1;
+				uint16_t offsetAxis0;	// not in friction
+				uint16_t offsetAxis1;	// not in friction
 			*/
-			volatile FFP_MIDI_Effect_Friction *midi_data =
-					(FFP_MIDI_Effect_Friction *)&effect->data;
-					
+
+			// Friction shares this layout up to coeffAxis1, the only fields written here
+			volatile FFP_MIDI_Effect_Spring_Inertia_Damper *midi_data =
+				(FFP_MIDI_Effect_Spring_Inertia_Damper *)&effect->data;
+
 			FFP_Share_Condition *effect_share = (FFP_Share_Condition *)&effect->share_data;
-					
+			
 			effect_share->usb_gain = data->gain;			//Scale coefficients by gain since FFP conditional effects don't have gain parameter
 			FfbSetParamMidi_14bit(effect->state, &(midi_data->coeffAxis0), eid, 
 						FFP_MIDI_MODIFY_COEFFAXIS0, UsbInt8ToMidiInt14(CalcGainCoeff(effect_share->usb_coeffAxis0, data->gain)));
 			FfbSetParamMidi_14bit(effect->state, &(midi_data->coeffAxis1), eid, 
-						FFP_MIDI_MODIFY_COEFFAXIS1, UsbInt8ToMidiInt14(CalcGainCoeff(effect_share->usb_coeffAxis1, data->gain)));			
-			
-			midi_data_len = sizeof(FFP_MIDI_Effect_Friction);
+						FFP_MIDI_MODIFY_COEFFAXIS1, UsbInt8ToMidiInt14(CalcGainCoeff(effect_share->usb_coeffAxis1, data->gain)));
+						
+			if (data->effectType == USB_EFFECT_FRICTION)
+				midi_data_len = sizeof(FFP_MIDI_Effect_Friction);
+			else
+				midi_data_len = sizeof(FFP_MIDI_Effect_Spring_Inertia_Damper);
 
 		}
 		break;

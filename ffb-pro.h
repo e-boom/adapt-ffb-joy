@@ -74,10 +74,13 @@ typedef struct
 	uint8_t usb_attackLevel;
 	uint8_t usb_fadeLevel;
 	uint8_t range;			//Not varied for constant but simplifies use of common structure
-	uint8_t usb_magnitude;
+	int16_t usb_magnitude;	// signed: its sign reverses the direction
 	uint8_t usb_direction;
 	} FFP_Share_Constant;
-	
+
+// Compile-time check: the array size goes negative if the struct outgrows share_data
+typedef char FFP_Share_Constant_fits[(sizeof(FFP_Share_Constant) <= MAX_SHARE_DATA) ? 1 : -1];
+
 typedef struct
 	{
 	uint16_t usb_duration;
