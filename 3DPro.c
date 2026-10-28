@@ -265,12 +265,12 @@ static void FA_NORETURN( reboot ) ( void )
 
 //------------------------------------------------------------------------------
 
-// Initialize the hardware
+// Initialize the hardware and wait for a stick
 //
-// init_hw() is called only once, first thing in main(),
-// so it doesn't need a stack frame. Saves lots of push/pops.
+// init_hw() is called only once, from Joystick_Init(), and returns only
+// after an FFP or FFP wheel has been detected.
 
-void FA_NAKED( init_hw ) ( void )
+void init_hw ( void )
 {
   // Initialize ports (ATmega32U4)
     DDRE  = DDE ;
@@ -292,14 +292,15 @@ void FA_NAKED( init_hw ) ( void )
 	    {
 		Flash_LED_12MS() ;			// Flash LED and wait
 		Delay_1024( T0DEL200MS ) ;
-							// Try to read a data packet,
-		QueryFFP( 0, 126 ) ;			// don't know how long - let it time out
+							// Try to read a data packet, FFP sends
+		QueryFFP( 0, DATSZFFP + 2 ) ;		// 17 clocks, wheel 12 - let it time out
+		dis3DP_INT() ;				// Freeze sw_clkcnt and ffp_packet
 
 		Flash_LED_12MS() ;
 
 		// Analyze clock count
 
-		if ( ! ~sw_clkcnt )
+		if ( sw_clkcnt == 0xFF )		// B1 pressed, no clock arrived
 		    sw_clkcnt = 0 ;
 
 		if ( sw_clkcnt == (DATSZFFP+1) &&
@@ -317,8 +318,6 @@ void FA_NAKED( init_hw ) ( void )
 				FfbSetDriver(1);
 				break;
 			}
-			
-		dis3DP_INT() ;
 	    }
 
     dis3DP_INT() ;				// Disable INT
@@ -326,8 +325,6 @@ void FA_NAKED( init_hw ) ( void )
     cli() ;					// Disable interrupts
 
     sw_buttons = BUTMSK ;			// All buttons released
-
-    RET() ;					// naked also means no ret..
 }
 
 //------------------------------------------------------------------------------
