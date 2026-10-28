@@ -34,6 +34,8 @@
 */
 
 
+#include <avr/pgmspace.h>
+
 #include "3DPro.h"
 #include "Joystick.h"
 #include "ffb.h"
@@ -179,6 +181,88 @@ static uint8_t AxisFilter_Update(AxisFilter_t* filter, uint8_t sample)
 
 
 
+// Twist drift correction for the FFP.
+//
+// The gimbal turns the handle a little when the stick is tilted, so the raw twist
+// reading changes with X and Y even with the motors off and the handle untouched,
+// and so do the readings at its two stops. Three tables hold the raw twist on a
+// 5 x 5 grid of stick positions: with the handle untouched, and at its left and
+// right stop. In between, each is interpolated bilinearly. The reported twist is
+// then stretched so that, at every stick position, the untouched handle reads 32
+// and the stops read 0 and 63.
+//
+// TWIST_DRIFT_CORRECTION: 0 reports the twist uncorrected.
+// twist_grid_x/_y: the X and Y values of the tables' columns and rows. The middle
+//	ones are where the stick rested in the recording (multi_controller raw / 64).
+// twist_low/_centre/_high: raw twist in quarter counts (0..252 for 0..63); rows
+//	forward (Y negative) to back, columns left to right. From the user's stick on
+//	2026-10-28: the centre fitted by tools/fit_twist_tables.py to a recording of
+//	the stick moved round without twisting; the stops from two recordings twisting
+//	to both ends (the left stop at the forward-left and back-right corners held
+//	exactly in the corner, one count added so the end is always reached), carried
+//	over from a 3 x 3 table.
+
+#define TWIST_DRIFT_CORRECTION		1
+#define TWIST_GRID					5
+
+static const int16_t twist_grid_x[TWIST_GRID] PROGMEM = { -512, -294, -76, 218, 511 };
+static const int16_t twist_grid_y[TWIST_GRID] PROGMEM = { -512, -249,  14, 262, 511 };
+
+static const uint8_t twist_low[TWIST_GRID][TWIST_GRID] PROGMEM =
+	{
+	{  40,  20,   0,   0,   0 },	// forward
+	{  31,  15,   0,   0,   0 },
+	{  21,  10,   0,   0,   0 },	// rest
+	{  20,  10,   0,  12,  24 },
+	{  20,  10,   0,  26,  52 },	// back
+	};
+
+static const uint8_t twist_centre[TWIST_GRID][TWIST_GRID] PROGMEM =
+	{
+	{ 124, 126, 134, 129, 158 },	// forward
+	{ 109, 135, 133, 138, 155 },
+	{ 111, 134, 136, 123, 160 },	// rest
+	{ 130, 137, 140, 125, 148 },
+	{ 157, 162, 139, 124, 129 },	// back
+	};
+
+static const uint8_t twist_high[TWIST_GRID][TWIST_GRID] PROGMEM =
+	{
+	{ 252, 242, 232, 242, 252 },	// forward
+	{ 252, 247, 241, 246, 250 },
+	{ 252, 251, 251, 250, 248 },	// rest
+	{ 252, 252, 252, 251, 250 },
+	{ 252, 252, 252, 252, 252 },	// back
+	};
+
+// Returns the index of the grid cell that value falls in: 0..TWIST_GRID-2.
+static uint8_t TwistCell(const int16_t* grid, int16_t value)
+	{
+	uint8_t cell = TWIST_GRID - 2;
+	while (cell > 0 && value < (int16_t) pgm_read_word(&grid[cell]))
+		cell--;
+	return cell;
+	}
+
+// Returns the table's value at stick position (x, y), in 1/256 counts.
+static int16_t TwistTable(const uint8_t table[TWIST_GRID][TWIST_GRID], int16_t x, int16_t y)
+	{
+	uint8_t col = TwistCell(twist_grid_x, x);
+	uint8_t row = TwistCell(twist_grid_y, y);
+	int16_t x0 = pgm_read_word(&twist_grid_x[col]), x1 = pgm_read_word(&twist_grid_x[col + 1]);
+	int16_t y0 = pgm_read_word(&twist_grid_y[row]), y1 = pgm_read_word(&twist_grid_y[row + 1]);
+
+	// Position inside the cell, in 1/256
+	int16_t fx = ((int32_t) (x - x0) << 8) / (x1 - x0);
+	int16_t fy = ((int32_t) (y - y0) << 8) / (y1 - y0);
+
+	int32_t top    = (int32_t) pgm_read_byte(&table[row][col]) * (256 - fx) + (int32_t) pgm_read_byte(&table[row][col + 1]) * fx;
+	int32_t bottom = (int32_t) pgm_read_byte(&table[row + 1][col]) * (256 - fx) + (int32_t) pgm_read_byte(&table[row + 1][col + 1]) * fx;
+
+	// Quarter counts times 65536, to 1/256 counts
+	return (top * (256 - fy) + bottom * fy + 512) >> 10;
+	}
+
 /** Fills the given HID report data structure with the next HID report to send to the host.
  *
  *  \param[out] outReportData  Pointer to a HID report data structure to be filled
@@ -308,7 +392,32 @@ int Joystick_CreateInputReport(uint8_t inReportId, USB_JoystickReport_Data_t* co
 		outReportData->Hat = sw_report[2] >> 4;
 		// The twist arrives as a signed 6-bit value, centred on the wrap from 63 to 0.
 		// Shift it to 0..63 (centre 32) first, so the filter never averages across that wrap.
-		outReportData->Rz = AxisFilter_Update(&twist_filter, ((sw_report[3] & 0x3f) - 32) & 0x3f);
+		int16_t twist = ((sw_report[3] & 0x3f) - 32) & 0x3f;
+		if (TWIST_DRIFT_CORRECTION)
+			{
+			// Map the drifted centre to 32 and the drifted stops to 0 and 63, each
+			// side stretched to fill its half. All in 1/256 counts.
+			int16_t low    = TwistTable(twist_low, outReportData->X, outReportData->Y);
+			int16_t centre = TwistTable(twist_centre, outReportData->X, outReportData->Y);
+			int16_t high   = TwistTable(twist_high, outReportData->X, outReportData->Y);
+			if (centre < low + 256)		// keep at least a count on either side
+				centre = low + 256;
+			if (high < centre + 256)
+				high = centre + 256;
+
+			int16_t raw = twist * 256;
+			int32_t mapped;
+			if (raw >= centre)
+				mapped = 32 * 256 + (int32_t) (raw - centre) * (31 * 256) / (high - centre);
+			else
+				mapped = 32 * 256 - (int32_t) (centre - raw) * (32 * 256) / (centre - low);
+			if (mapped < 0)				// beyond a measured stop
+				mapped = 0;
+			else if (mapped > 63 * 256)
+				mapped = 63 * 256;
+			twist = (mapped + 128) / 256;	// rounded to the nearest count
+			}
+		outReportData->Rz = AxisFilter_Update(&twist_filter, twist);
 		outReportData->Throttle = ((sw_report[5] & 0x3f) << 1) + (sw_report[4] >> 7);
 		if (sw_report[5] & 0x20)
 			outReportData->Throttle |= 0b11000000;
