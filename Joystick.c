@@ -151,6 +151,82 @@ static volatile JoystickData prev_joystick_data;
 static volatile uint8_t ADC_is_ready = 0;
 
 
+// Jitter filter for the rudder axes: the FFP's own twist (Rz) and the two
+// pedals on ADC4/ADC5 that make up the Slider.
+//
+// Running the force feedback motors adds electrical noise to these axes, which
+// shows up as jitter. Each new sample goes through three stages:
+//	1. median of the last 3 samples: drops single-sample spikes
+//	2. moving average: smooths the remaining noise, keeping fractions of a count
+//	3. hysteresis: the reported value only changes once the average has moved
+//	   clearly away from it, so it does not flicker between two neighbours
+//
+// The twist is sampled once per report, each pedal once every fourth report.
+//
+// RUDDER_FILTER: 0 reports the raw values as before.
+// RUDDER_FILTER_SMOOTHING: a new sample weighs 1/2^n in the average, which then
+//	lags about 2^n - 1 samples behind. Higher is calmer but slower to follow
+//	the stick. 0 = no averaging.
+// RUDDER_FILTER_HYSTERESIS: how far, in percent of one count, the average has to
+//	move away from the reported value before that changes. 50 = no hysteresis.
+//	Keep it below 100, or the axis can stay stuck one count short of where it is.
+
+#define RUDDER_FILTER				1
+#define RUDDER_FILTER_SMOOTHING		3
+#define RUDDER_FILTER_HYSTERESIS	85
+
+#define AXIS_FILTER_FRACTION_BITS	6	// the average is kept in 1/64 counts
+#define AXIS_FILTER_HYSTERESIS		((RUDDER_FILTER_HYSTERESIS << AXIS_FILTER_FRACTION_BITS) / 100)
+
+typedef struct
+	{
+	uint8_t	history[2];	// the previous two samples, for the median
+	int16_t	average;	// in 1/64 counts
+	uint8_t	output;		// the value currently reported
+	} AxisFilter_t;
+
+// These start at zero and settle on the real positions within the first second of reports
+static AxisFilter_t twist_filter, pedal1_filter, pedal2_filter;
+
+// Runs one new sample through the filter and returns the value to report.
+static uint8_t AxisFilter_Update(AxisFilter_t* filter, uint8_t sample)
+	{
+	if (!RUDDER_FILTER)
+		return sample;
+
+	// 1. Median of this sample and the previous two
+	uint8_t low = filter->history[0], high = filter->history[1], median;
+	if (low > high)
+		{
+		low = filter->history[1];
+		high = filter->history[0];
+		}
+	if (sample < low)
+		median = low;
+	else if (sample > high)
+		median = high;
+	else
+		median = sample;
+	filter->history[0] = filter->history[1];
+	filter->history[1] = sample;
+
+	// 2. Moving average. It always moves at least 1/64 count, so that it settles
+	// exactly on a steady input instead of stalling just short of it.
+	int16_t delta = ((int16_t) median << AXIS_FILTER_FRACTION_BITS) - filter->average;
+	int16_t step = delta / (1 << RUDDER_FILTER_SMOOTHING);
+	if (step == 0)
+		step = (delta > 0) - (delta < 0);
+	filter->average += step;
+
+	// 3. Hysteresis
+	int16_t distance = filter->average - ((int16_t) filter->output << AXIS_FILTER_FRACTION_BITS);
+	if (distance > AXIS_FILTER_HYSTERESIS || distance < -AXIS_FILTER_HYSTERESIS)
+		filter->output = (filter->average + (1 << (AXIS_FILTER_FRACTION_BITS - 1))) >> AXIS_FILTER_FRACTION_BITS;
+
+	return filter->output;
+	}
+
+
 
 int Joystick_CreateInputReport(uint8_t inReportId, USB_JoystickReport_Data_t* const outReportData)
 	{
@@ -220,11 +296,11 @@ int Joystick_CreateInputReport(uint8_t inReportId, USB_JoystickReport_Data_t* co
 				added_controls_adc.sampledChannel = 4;
 				break;
 			case 4:
-				added_controls_adc.pedal1 = ADCH;
+				added_controls_adc.pedal1 = AxisFilter_Update(&pedal1_filter, ADCH);
 				added_controls_adc.sampledChannel = 5;
 				break;
 			case 5:
-				added_controls_adc.pedal2 = ADCH;
+				added_controls_adc.pedal2 = AxisFilter_Update(&pedal2_filter, ADCH);
 				added_controls_adc.sampledChannel = 0;
 				break;
 			default:
@@ -272,7 +348,9 @@ int Joystick_CreateInputReport(uint8_t inReportId, USB_JoystickReport_Data_t* co
 			outReportData->Y |= (0b11111100 << 8);
 		outReportData->Button = ((sw_report[4] & 0x7F) << 2) + ((sw_report[3] & 0xC0) >> 6);
 		outReportData->Hat = sw_report[2] >> 4;
-		outReportData->Rz = (sw_report[3] & 0x3f) - 32;
+		// The twist arrives as a signed 6-bit value, centred on the wrap from 63 to 0.
+		// Shift it to 0..63 (centre 32) first, so the filter never averages across that wrap.
+		outReportData->Rz = AxisFilter_Update(&twist_filter, ((sw_report[3] & 0x3f) - 32) & 0x3f);
 		outReportData->Throttle = ((sw_report[5] & 0x3f) << 1) + (sw_report[4] >> 7);
 		if (sw_report[5] & 0x20)
 			outReportData->Throttle |= 0b11000000;
