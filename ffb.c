@@ -446,7 +446,7 @@ void FfbOnCreateNewEffect(USB_FFBReport_CreateNewEffect_Feature_Data_t* inData, 
 		FlushDebugBuffer();
 		}
 
-	LogDataLf("Usb <=", outData->reportId, outData, sizeof(USB_FFBReport_PIDBlockLoad_Feature_Data_t));
+	LogDataLfP(PSTR("Usb <="), outData->reportId, outData, sizeof(USB_FFBReport_PIDBlockLoad_Feature_Data_t));
 
 	WaitMs(5);
 }
@@ -522,7 +522,7 @@ void FfbOnPIDPool(USB_FFBReport_PIDPool_Feature_Data_t *data)
 void FfbHandle_SetCustomForceData(USB_FFBReport_SetCustomForceData_Output_Data_t *data)
 	{
 	if (DoDebug(DEBUG_DETAIL))
-		LogTextLf("Set Custom Force Data");
+		LogTextLfP(PSTR("Set Custom Force Data"));
 	}
 
 
@@ -530,7 +530,7 @@ void FfbHandle_SetCustomForceData(USB_FFBReport_SetCustomForceData_Output_Data_t
 void FfbHandle_SetDownloadForceSample(USB_FFBReport_SetDownloadForceSample_Output_Data_t *data)
 	{
 	if (DoDebug(DEBUG_DETAIL))
-		LogTextLf("Set Download Force Sample");
+		LogTextLfP(PSTR("Set Download Force Sample"));
 	}
 
 
@@ -637,23 +637,23 @@ void FfbHandle_DeviceControl(USB_FFBReport_DeviceControl_Output_Data_t *data)
 	switch (control)
 	{
 		case USB_DCTRL_ACTUATORS_ENABLE:
-			LogTextLf("Enable Actuators");
+			LogTextLfP(PSTR("Enable Actuators"));
 			if (success)
 				pidState.status |= (1 << 1);
 			break;
 		case USB_DCTRL_ACTUATORS_DISABLE:
-			LogTextLf("Disable Actuators");
+			LogTextLfP(PSTR("Disable Actuators"));
 			if (success)
 				pidState.status &= ~(1 << 1);
 			break;
 		case USB_DCTRL_STOPALL:
-			LogTextLf("Stop All Effects");
+			LogTextLfP(PSTR("Stop All Effects"));
 			if (success)
 				pidState.effectBlockIndex = 0;
 				//need to update all effect states to not playing? Maybe not needed since adapter doesn't track when effects finish anyway
 			break;
 		case USB_DCTRL_RESET:
-			LogTextLf("Reset");
+			LogTextLfP(PSTR("Reset"));
 			// Reset (e.g. FFB-application out of focus)
 			//Enables auto centre, continues, enables actuators, stop and free all effects, resets device gain (for FFP at least)
 			if (success)
@@ -665,12 +665,12 @@ void FfbHandle_DeviceControl(USB_FFBReport_DeviceControl_Output_Data_t *data)
 				}
 			break;
 		case USB_DCTRL_PAUSE:		
-			LogTextLf("Pause");
+			LogTextLfP(PSTR("Pause"));
 			if (success)
 				pidState.status |= 1;
 			break;
 		case USB_DCTRL_CONTINUE:
-			LogTextLf("Continue");
+			LogTextLfP(PSTR("Continue"));
 			if (success)
 				pidState.status &= ~1;
 			break;
@@ -700,7 +700,7 @@ void FfbHandle_DeviceGain(USB_FFBReport_DeviceGain_Output_Data_t *data)
 
 void FfbHandle_SetCustomForce(USB_FFBReport_SetCustomForce_Output_Data_t *data)
 	{
-	LogTextLf("Set Custom Force");
+	LogTextLfP(PSTR("Set Custom Force"));
 //	LogBinary(&data, sizeof(USB_FFBReport_SetCustomForce_Output_Data_t));
 	}
 
@@ -772,10 +772,12 @@ void FfbSendByte(uint8_t data);
 
 void FfbSendData(const uint8_t *data, uint16_t len)
 	{
+#if DEBUG_ENABLED
 	if (gDebugMode)
 		{
 		LogTextP(PSTR(" => Midi:")); LogBinaryLf(data, len);
 		}
+#endif
 
 	uint16_t i = 0;
 	for (i = 0; i < len; i++)

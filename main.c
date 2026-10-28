@@ -195,7 +195,7 @@ void EVENT_USB_Device_ControlRequest(void)
 
 		case HID_REQ_GetReport:
 			if (DoDebug(DEBUG_DETAIL))
-				LogTextLf("GetReport");
+				LogTextLfP(PSTR("GetReport"));
 			if (USB_ControlRequest.bmRequestType == (REQDIR_DEVICETOHOST | REQTYPE_CLASS | REQREC_INTERFACE))
 				{
 				LEDs_SetAllLEDs(LEDS_ALL_LEDS);
@@ -246,7 +246,7 @@ void EVENT_USB_Device_ControlRequest(void)
 			break;
 		case HID_REQ_SetReport:
 			if (DoDebug(DEBUG_DETAIL))
-				LogTextLf("SetReport");
+				LogTextLfP(PSTR("SetReport"));
 
 			if (USB_ControlRequest.bmRequestType == (REQDIR_HOSTTODEVICE | REQTYPE_CLASS | REQREC_INTERFACE))
 				{
