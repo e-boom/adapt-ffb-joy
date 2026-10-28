@@ -33,6 +33,15 @@
 *.eep
 *.lss
 *.sym
+*.cof
+__avr_gdbinit
+/Joystick.hex
+
+# AVR Studio per-user workspace
+*.aws
+
+# Doxygen output
+/Documentation/
 
 # Executables
 *.exe
@@ -46,12 +55,3 @@
 *.su
 *.idb
 *.pdb
-
-# Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
