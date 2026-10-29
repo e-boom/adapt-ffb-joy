@@ -153,6 +153,14 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM JoystickReport[] =
     HID_RI_REPORT_SIZE(8, 0x01),
     HID_RI_REPORT_COUNT(8, 0x08),
     HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
+#elif SHIFT_BUTTON
+    // Same 16 buttons, four items in 16-bit form: this keeps the descriptor as long as
+    // the 9-button form below, and so as long as WheelReport (see the static assert)
+    HID_RI_USAGE_MINIMUM(16, 0x09),
+    HID_RI_USAGE_MAXIMUM(16, 0x10),
+    HID_RI_REPORT_SIZE(16, 0x01),
+    HID_RI_REPORT_COUNT(16, 0x08),
+    HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
 #else
     HID_RI_USAGE_MINIMUM(8, 0x09),
     HID_RI_USAGE_MAXIMUM(8, 0x09),
@@ -1802,16 +1810,16 @@ const USB_Descriptor_String_t PROGMEM ManufacturerString =
  */
 const USB_Descriptor_String_t PROGMEM ProductStringJoystick =
 {
-	.Header                 = {.Size = USB_STRING_LEN(18), .Type = DTYPE_String},
+	.Header                 = {.Size = USB_STRING_LEN(20), .Type = DTYPE_String},
 
-	.UnicodeString          = L"LUFA Joystick wFFB"
+	.UnicodeString          = L"MS SidewinderPro FFB"
 };
 
 const USB_Descriptor_String_t PROGMEM ProductStringWheel =
 {
-	.Header                 = {.Size = USB_STRING_LEN(15), .Type = DTYPE_String},
+	.Header                 = {.Size = USB_STRING_LEN(22), .Type = DTYPE_String},
 
-	.UnicodeString          = L"LUFA Wheel wFFB"
+	.UnicodeString          = L"MS SidewinderWheel FFB"
 };
 
 /** This function is called by the library when in device mode, and must be overridden (see library "USB Descriptors"

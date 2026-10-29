@@ -45,8 +45,14 @@
 //	descriptor is the original one, with Rx, Ry (trims) and Slider (pedals),
 //	plus an unused Z and 16 buttons. 0 declares Z, the trims, the pedals and
 //	buttons 10-16 as padding, so the host lists only the controls the FFP has.
-//	The report's bytes are the same either way.
+//	SHIFT_BUTTON 1 keeps the 16 buttons. The report's bytes are the same either way.
 #define EXTRA_ANALOG_CONTROLS	0
+
+// Define: SHIFT_BUTTON
+//	1 makes the FFP's button 9 (on the base) a shift key: while it is held,
+//	buttons 1-8 are reported as buttons 9-16 and button 9 itself is never
+//	reported, so the host sees 16 buttons. 0 reports the 9 buttons as they are.
+#define SHIFT_BUTTON	1
 
 	/* Includes: */
 		#include <LUFA/Drivers/USB/USB.h>

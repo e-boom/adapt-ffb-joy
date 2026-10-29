@@ -388,7 +388,12 @@ int Joystick_CreateInputReport(uint8_t inReportId, USB_JoystickReport_Data_t* co
 		outReportData->Y = (sw_report[1] >> 2) + ((sw_report[2] & 0x0F) << 6);
 		if (sw_report[2] & 0x08)
 			outReportData->Y |= 0xFC00u;	// sign-extend the 10-bit value
-		outReportData->Button = ((sw_report[4] & 0x7F) << 2) + ((sw_report[3] & 0xC0) >> 6);
+#if SHIFT_BUTTON
+		if (sw_report[4] & 0x40)	// button 9 held: buttons 1-8 report as 9-16, button 9 itself never shows
+			outReportData->Button = ((uint16_t) (sw_report[4] & 0x3F) << 10) + ((sw_report[3] & 0xC0) << 2);
+		else
+#endif
+			outReportData->Button = ((sw_report[4] & 0x7F) << 2) + ((sw_report[3] & 0xC0) >> 6);
 		outReportData->Hat = sw_report[2] >> 4;
 		// The twist arrives as a signed 6-bit value, centred on the wrap from 63 to 0.
 		// Shift it to 0..63 (centre 32) first, so the filter never averages across that wrap.
