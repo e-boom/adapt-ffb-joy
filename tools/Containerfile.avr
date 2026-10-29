@@ -1,0 +1,12 @@
+# AVR toolchain for building the firmware, the same on every PC.
+#
+#   podman build -t adapt-ffb-joy-avr -f tools/Containerfile.avr .
+#   podman run --rm -v "${PWD}:/wt" adapt-ffb-joy-avr make
+#
+# or tools/build.ps1 / tools/build.sh, which do both. Ubuntu 24.04 ships
+# gcc-avr 7.3, close to the WinAVR compiler this project was written for.
+FROM docker.io/library/ubuntu:24.04
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends gcc-avr avr-libc binutils-avr make \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /wt
