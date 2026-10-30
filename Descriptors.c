@@ -61,14 +61,24 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM JoystickReport[] =
     HID_RI_COLLECTION(8, 0x00), // Physical
         HID_RI_USAGE(8, 0x30), // Usage X
         HID_RI_USAGE(8, 0x31), // Usage Y
+#if EXTRA_ANALOG_CONTROLS
         HID_RI_USAGE(8, 0x32), // Usage Z
+#endif
         HID_RI_LOGICAL_MINIMUM(16, -512),
         HID_RI_LOGICAL_MAXIMUM(16, 511),
         HID_RI_PHYSICAL_MINIMUM(8, 0),
         HID_RI_PHYSICAL_MAXIMUM(16, 1023),
+#if EXTRA_ANALOG_CONTROLS
         HID_RI_REPORT_COUNT(8, 0x03),
         HID_RI_REPORT_SIZE(8, 0x10),
         HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
+#else
+        HID_RI_REPORT_COUNT(8, 0x02),
+        HID_RI_REPORT_SIZE(8, 0x10),
+        HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
+        HID_RI_REPORT_COUNT(8, 0x01),
+        HID_RI_INPUT(8, HID_IOF_CONSTANT),	// 16b Z: always 0, so padding
+#endif
 
 		0x09, 0x35,		//     USAGE (Rz)
         HID_RI_LOGICAL_MINIMUM(8, 0),
@@ -86,25 +96,36 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM JoystickReport[] =
 
 		0x65, 0x00,		//     UNIT (None)
 
+#if EXTRA_ANALOG_CONTROLS
 		0x09, 0x33,     //   USAGE (Rx)
 		0x09, 0x34,		//   USAGE (Ry)
+#endif
 	    HID_RI_LOGICAL_MINIMUM(8, 0),
-	    HID_RI_LOGICAL_MAXIMUM(8, 255),
-        HID_RI_PHYSICAL_MAXIMUM(8, 255),
+	    HID_RI_LOGICAL_MAXIMUM(16, 255),
+        HID_RI_PHYSICAL_MAXIMUM(16, 255),
 	    HID_RI_REPORT_SIZE(8, 0x08),
-        HID_RI_REPORT_SIZE(8, 0x08),
 	    HID_RI_REPORT_COUNT(8, 0x02),
+#if EXTRA_ANALOG_CONTROLS
 		HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
+#else
+		HID_RI_INPUT(8, HID_IOF_CONSTANT),	// 2 x 8b trims: no pots fitted, so padding
+#endif
 
     HID_RI_END_COLLECTION(0),
 
+#if EXTRA_ANALOG_CONTROLS
 	0x09, 0x36,		//   USAGE (Rudder - hmm...actual rudder code 0xBA does not seem to work in Windows - so use slider)
+#endif
     HID_RI_LOGICAL_MINIMUM(8, -128),
     HID_RI_LOGICAL_MAXIMUM(8, 127),
-    HID_RI_PHYSICAL_MAXIMUM(8, 255),
+    HID_RI_PHYSICAL_MAXIMUM(16, 255),
     HID_RI_REPORT_SIZE(8, 0x08),
     HID_RI_REPORT_COUNT(8, 0x01),
+#if EXTRA_ANALOG_CONTROLS
 	HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
+#else
+	HID_RI_INPUT(8, HID_IOF_CONSTANT),	// 8b pedals: no pots fitted, so padding
+#endif
 
 	0x05, 0x02,                    //   USAGE_PAGE (Simulation Controls)
 
@@ -126,11 +147,29 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM JoystickReport[] =
     HID_RI_REPORT_COUNT(8, 0x08),
     HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
 
+#if EXTRA_ANALOG_CONTROLS
     HID_RI_USAGE_MINIMUM(8, 0x09),
     HID_RI_USAGE_MAXIMUM(8, 0x10),
     HID_RI_REPORT_SIZE(8, 0x01),
     HID_RI_REPORT_COUNT(8, 0x08),
     HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
+#elif SHIFT_BUTTON
+    // Same 16 buttons, four items in 16-bit form: this keeps the descriptor as long as
+    // the 9-button form below, and so as long as WheelReport (see the static assert)
+    HID_RI_USAGE_MINIMUM(16, 0x09),
+    HID_RI_USAGE_MAXIMUM(16, 0x10),
+    HID_RI_REPORT_SIZE(16, 0x01),
+    HID_RI_REPORT_COUNT(16, 0x08),
+    HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
+#else
+    HID_RI_USAGE_MINIMUM(8, 0x09),
+    HID_RI_USAGE_MAXIMUM(8, 0x09),
+    HID_RI_REPORT_SIZE(8, 0x01),
+    HID_RI_REPORT_COUNT(8, 0x01),
+    HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
+    HID_RI_REPORT_COUNT(8, 0x07),
+    HID_RI_INPUT(8, HID_IOF_CONSTANT),	// 7b: the FFP has 9 buttons, so padding
+#endif
 
 	HID_RI_USAGE_PAGE(8, 0x01), // Generic Desktop
 	0x09, 0x39,		//     USAGE (Hat switch)
@@ -841,10 +880,9 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM WheelReport[] =
 		0x09, 0x33,     //   USAGE (Rx)
 		0x09, 0x34,		//   USAGE (Ry)
 	    HID_RI_LOGICAL_MINIMUM(8, 0),
-	    HID_RI_LOGICAL_MAXIMUM(8, 255),
-        HID_RI_PHYSICAL_MAXIMUM(8, 255),
+	    HID_RI_LOGICAL_MAXIMUM(16, 255),
+        HID_RI_PHYSICAL_MAXIMUM(16, 255),
 	    HID_RI_REPORT_SIZE(8, 0x08),
-        HID_RI_REPORT_SIZE(8, 0x08),
 	    HID_RI_REPORT_COUNT(8, 0x02),
 		HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
 
@@ -853,7 +891,7 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM WheelReport[] =
 	0x09, 0x36,		//   USAGE (Rudder - hmm...actual rudder code 0xBA does not seem to work in Windows - so use slider)
     HID_RI_LOGICAL_MINIMUM(8, -128),
     HID_RI_LOGICAL_MAXIMUM(8, 127),
-    HID_RI_PHYSICAL_MAXIMUM(8, 255),
+    HID_RI_PHYSICAL_MAXIMUM(16, 255),
     HID_RI_REPORT_SIZE(8, 0x08),
     HID_RI_REPORT_COUNT(8, 0x01),
 	HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
@@ -1483,6 +1521,10 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM WheelReport[] =
 0xC0,	// END COLLECTION ()
 };
 
+// The configuration descriptor gives one HIDReportLength, sizeof(JoystickReport), for
+// whichever of the two report descriptors is sent.
+_Static_assert(sizeof(JoystickReport) == sizeof(WheelReport), "JoystickReport and WheelReport must have the same length");
+
 
 /** Device descriptor structure. This descriptor, located in FLASH memory, describes the overall
  *  device characteristics, including the supported USB version, control endpoint size and the
@@ -1514,7 +1556,7 @@ const USB_Descriptor_Device_t PROGMEM DeviceDescriptorJoystick =
 #else
 	.ProductID              = 0x2056,	// WAS 0x2043
 #endif // ENABLE_JOYSTICK_SERIAL
-	.ReleaseNumber          = VERSION_BCD(00.01),
+	.ReleaseNumber          = VERSION_BCD(FIRMWARE_RELEASE),
 
 	.ManufacturerStrIndex   = 0x01,
 	.ProductStrIndex        = 0x02,
@@ -1548,7 +1590,7 @@ const USB_Descriptor_Device_t PROGMEM DeviceDescriptorWheel =
 #else
 	.ProductID              = 0x204E,	// WAS 0x2043
 #endif // ENABLE_JOYSTICK_SERIAL
-	.ReleaseNumber          = VERSION_BCD(00.01),
+	.ReleaseNumber          = VERSION_BCD(FIRMWARE_RELEASE),
 
 	.ManufacturerStrIndex   = 0x01,
 	.ProductStrIndex        = 0x02,
@@ -1579,7 +1621,7 @@ const USB_Descriptor_Configuration_t PROGMEM ConfigurationDescriptor =
 			.ConfigurationNumber    = 1,
 			.ConfigurationStrIndex  = NO_DESCRIPTOR,
 
-			.ConfigAttributes       = (USB_CONFIG_ATTR_RESERVED | USB_CONFIG_ATTR_SELFPOWERED),
+			.ConfigAttributes       = USB_CONFIG_ATTR_RESERVED,
 
 			.MaxPowerConsumption    = USB_CONFIG_POWER_MA(100)
 		},
@@ -1768,16 +1810,16 @@ const USB_Descriptor_String_t PROGMEM ManufacturerString =
  */
 const USB_Descriptor_String_t PROGMEM ProductStringJoystick =
 {
-	.Header                 = {.Size = USB_STRING_LEN(18), .Type = DTYPE_String},
+	.Header                 = {.Size = USB_STRING_LEN(20), .Type = DTYPE_String},
 
-	.UnicodeString          = L"LUFA Joystick wFFB"
+	.UnicodeString          = L"MS SidewinderPro FFB"
 };
 
 const USB_Descriptor_String_t PROGMEM ProductStringWheel =
 {
-	.Header                 = {.Size = USB_STRING_LEN(15), .Type = DTYPE_String},
+	.Header                 = {.Size = USB_STRING_LEN(22), .Type = DTYPE_String},
 
-	.UnicodeString          = L"LUFA Wheel wFFB"
+	.UnicodeString          = L"MS SidewinderWheel FFB"
 };
 
 /** This function is called by the library when in device mode, and must be overridden (see library "USB Descriptors"

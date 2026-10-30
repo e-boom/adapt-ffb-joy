@@ -32,6 +32,7 @@
 #define _FFB_
 
 #include <avr/io.h>
+#include <avr/pgmspace.h>
 
 
 /* Type Defines: */
@@ -43,6 +44,13 @@
 #define MAX_EFFECTS 19  //Actually Max Effect ID , but effects IDs start at 0x02 so 1 less than this
 //FFP can support 10 waveforms + 2 of each conditional = 18 not including other unsupported effect types
 //Wheel limits?
+
+// The effect block index a failed Create New Effect answers with. Windows' pid.dll looks up the
+// returned index in its effect table whatever the load status says, as (index - 1) * entry size,
+// so index 0 makes it read far outside the table and crash (seen in pid.dll 10.0.26100 on an 11th
+// waveform effect). MAX_EFFECTS is in the descriptor's range but never handed out:
+// GetNextFreeEffect stops at MAX_EFFECTS - 1, so a later Block Free of it is ignored.
+#define FAILED_EFFECT_BLOCK_INDEX	MAX_EFFECTS
 
 	
 // ---- Input
@@ -124,7 +132,7 @@ typedef struct
 	{ // FFB: Set CustomForceData Output Report
 	uint8_t	reportId;	// =7
 	uint8_t	effectBlockIndex;	// 1..40
-	uint8_t dataOffset;
+	uint16_t dataOffset;
 	int8_t	data[12];
 	} USB_FFBReport_SetCustomForceData_Output_Data_t;
 
@@ -194,8 +202,12 @@ typedef struct
 	uint8_t		memoryManagement;	// Bits: 0=DeviceManagedPool, 1=SharedParameterBlocks
 	} USB_FFBReport_PIDPool_Feature_Data_t;
 
-// Lengths of each report type
-extern const uint16_t OutReportSize[];
+// Lengths of each report type, in flash: read with pgm_read_byte
+extern const uint8_t OutReportSize[] PROGMEM;
+
+// OUT report ids 1..OUT_REPORT_ID_MAX are valid when their OutReportSize entry is non-zero.
+// DEBUG_ENABLE_USB builds also accept OUT_REPORT_ID_MAX+1, the spoofed Create New Effect.
+#define OUT_REPORT_ID_MAX 14
 
 // Handles Force Feeback data manipulation from USB reports to joystick's MIDI channel
 
@@ -203,12 +215,6 @@ void FfbSetDriver(uint8_t id);
 
 // Initializes and enables MIDI to joystick using USART1 TX
 void FfbInitMidi(void);
-
-// Send "enable FFB" to joystick
-void FfbSendEnable(void);
-
-// Send "disable FFB" to joystick
-void FfbSendDisable(void);
 
 // Handle incoming data from USB
 void FfbOnUsbData(uint8_t *data, uint16_t len);
@@ -226,9 +232,9 @@ void WaitMs(int ms);
 // max delay 2560us.
 void _delay_us10(uint8_t delay);
 
-// Send raw data to the
+// Send raw data to the joystick's MIDI line; the _P variant reads <data> from flash
 void FfbSendData(const uint8_t *data, uint16_t len);
-void FfbSendPackets(const uint8_t *data, uint16_t len);
+void FfbSendData_P(const uint8_t *data, uint16_t len);
 void FfbPulseX1( void );
 
 // Debugging
@@ -245,15 +251,15 @@ typedef struct
 	uint8_t constants;
 	uint8_t triangles;
 	uint8_t sines;
-	uint8_t effectId[MAX_EFFECTS];
+	uint8_t effectId[MAX_EFFECTS+1];	// indexed by effect id, like gEffectStates
 	} TDisabledEffectTypes;
 
-extern volatile TDisabledEffectTypes gDisabledEffects;
+extern TDisabledEffectTypes gDisabledEffects;
 
 uint8_t GetMidiEffectType(uint8_t id);
 void FfbSendSysEx(const uint8_t* midi_data, uint8_t len);
-uint8_t FfbSetParamMidi_14bit(uint8_t effectState, volatile uint16_t *midi_data_param, uint8_t effectId, uint8_t address, uint16_t value);
-uint8_t FfbSetParamMidi_7bit(uint8_t effectState, volatile uint8_t *midi_data_param, uint8_t effectId, uint8_t address, uint8_t value);
+uint8_t FfbSetParamMidi_14bit(uint8_t effectState, uint16_t *midi_data_param, uint8_t effectId, uint8_t address, uint16_t value);
+uint8_t FfbSetParamMidi_7bit(uint8_t effectState, uint8_t *midi_data_param, uint8_t effectId, uint8_t address, uint8_t value);
 uint16_t UsbUint16ToMidiUint14_Time(uint16_t inUsbValue);
 uint16_t UsbUint16ToMidiUint14(uint16_t inUsbValue);
 int16_t UsbInt8ToMidiInt14(int8_t inUsbValue);
@@ -313,7 +319,7 @@ typedef struct {
 typedef struct {
 	uint8_t state;	// see constants <MEffectState_*>
 	uint8_t share_data[MAX_SHARE_DATA]; // All data to be shared between Output reports for calculating MIDI parameters coupled to multiple USB parameters
-	volatile uint8_t	data[MAX_MIDI_MSG_LEN];
+	uint8_t	data[MAX_MIDI_MSG_LEN];
 	} TEffectState;
 
 typedef struct
@@ -332,13 +338,13 @@ typedef struct
 	void (*ModifyDuration)(uint8_t effectState, uint16_t* midi_data_param, uint8_t effectId, uint16_t duration);
 	void (*ModifyDeviceGain)(uint8_t gain);
 
-	void (*CreateNewEffect)(USB_FFBReport_CreateNewEffect_Feature_Data_t* inData, volatile TEffectState* effect);
-	void (*SetEnvelope)(USB_FFBReport_SetEnvelope_Output_Data_t* data, volatile TEffectState* effect);
-	void (*SetCondition)(USB_FFBReport_SetCondition_Output_Data_t* data, volatile TEffectState* effect);
-	void (*SetPeriodic)(USB_FFBReport_SetPeriodic_Output_Data_t* data, volatile TEffectState* effect);
-	void (*SetConstantForce)(USB_FFBReport_SetConstantForce_Output_Data_t* data, volatile TEffectState* effect);
-	void (*SetRampForce)(USB_FFBReport_SetRampForce_Output_Data_t* data, volatile TEffectState* effect);
-	int  (*SetEffect)(USB_FFBReport_SetEffect_Output_Data_t* data, volatile TEffectState* effect);
+	void (*CreateNewEffect)(USB_FFBReport_CreateNewEffect_Feature_Data_t* inData, TEffectState* effect);
+	void (*SetEnvelope)(USB_FFBReport_SetEnvelope_Output_Data_t* data, TEffectState* effect);
+	void (*SetCondition)(USB_FFBReport_SetCondition_Output_Data_t* data, TEffectState* effect);
+	void (*SetPeriodic)(USB_FFBReport_SetPeriodic_Output_Data_t* data, TEffectState* effect);
+	void (*SetConstantForce)(USB_FFBReport_SetConstantForce_Output_Data_t* data, TEffectState* effect);
+	void (*SetRampForce)(USB_FFBReport_SetRampForce_Output_Data_t* data, TEffectState* effect);
+	int  (*SetEffect)(USB_FFBReport_SetEffect_Output_Data_t* data, TEffectState* effect);
 	} FFB_Driver;
 
 #endif // _FFB_

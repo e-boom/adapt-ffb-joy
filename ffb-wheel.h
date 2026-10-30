@@ -110,13 +110,13 @@ void FfbwheelSendModify(uint8_t effectId, uint8_t address, uint16_t value);
 void FfbwheelModifyDuration(uint8_t effectState, uint16_t* midi_data_param, uint8_t effectId, uint16_t duration);
 void FfbwheelModifyDeviceGain(uint8_t gain);
 
-void FfbwheelSetEnvelope(USB_FFBReport_SetEnvelope_Output_Data_t* data, volatile TEffectState* e);
-void FfbwheelSetCondition(USB_FFBReport_SetCondition_Output_Data_t* data, volatile TEffectState* e);
-void FfbwheelSetPeriodic(USB_FFBReport_SetPeriodic_Output_Data_t* data, volatile TEffectState* e);
-void FfbwheelSetConstantForce(USB_FFBReport_SetConstantForce_Output_Data_t* data, volatile TEffectState* e);
-void FfbwheelSetRampForce(USB_FFBReport_SetRampForce_Output_Data_t* data, volatile TEffectState* e);
-int  FfbwheelSetEffect(USB_FFBReport_SetEffect_Output_Data_t *data, volatile TEffectState* effect);
-void FfbwheelCreateNewEffect(USB_FFBReport_CreateNewEffect_Feature_Data_t* inData, volatile TEffectState* effect);
+void FfbwheelSetEnvelope(USB_FFBReport_SetEnvelope_Output_Data_t* data, TEffectState* e);
+void FfbwheelSetCondition(USB_FFBReport_SetCondition_Output_Data_t* data, TEffectState* e);
+void FfbwheelSetPeriodic(USB_FFBReport_SetPeriodic_Output_Data_t* data, TEffectState* e);
+void FfbwheelSetConstantForce(USB_FFBReport_SetConstantForce_Output_Data_t* data, TEffectState* e);
+void FfbwheelSetRampForce(USB_FFBReport_SetRampForce_Output_Data_t* data, TEffectState* e);
+int  FfbwheelSetEffect(USB_FFBReport_SetEffect_Output_Data_t *data, TEffectState* effect);
+void FfbwheelCreateNewEffect(USB_FFBReport_CreateNewEffect_Feature_Data_t* inData, TEffectState* effect);
 
 uint8_t FfbwheelUsbToMidiEffectType(uint8_t usb_effect_type);
 uint8_t FfbwheelEffectMemFull(uint8_t new_midi_type);

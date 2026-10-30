@@ -248,7 +248,8 @@ static void FA_NOINLINE( Flash_LED_12MS ) ( void )
 //------------------------------------------------------------------------------
 
 // Reboot converter. Kill USB and wait for the watchdog to catch us.
-// Note: the watchdog is unleashed in main() after init_hw() returns.
+// Note: nothing else enables the watchdog, so reboot() does; SetupHardware()
+// clears WDRF and disables it again after the reset.
 
 static void FA_NORETURN( reboot ) ( void )
 {
@@ -256,18 +257,20 @@ static void FA_NORETURN( reboot ) ( void )
 
     USBCON = _B0(USBE) | _B1(FRZCLK) ;		// Kill USB
 
-    for ( ;; )					// Wait for watchdog to bite (.5s)
+    wdt_enable( WDTO_15MS ) ;
+
+    for ( ;; )					// Wait for watchdog to bite (15ms)
 	;
 }
 
 //------------------------------------------------------------------------------
 
-// Initialize the hardware
+// Initialize the hardware and wait for a stick
 //
-// init_hw() is called only once, first thing in main(),
-// so it doesn't need a stack frame. Saves lots of push/pops.
+// init_hw() is called only once, from Joystick_Init(), and returns only
+// after an FFP or FFP wheel has been detected.
 
-void FA_NAKED( init_hw ) ( void )
+void init_hw ( void )
 {
   // Initialize ports (ATmega32U4)
     DDRE  = DDE ;
@@ -289,14 +292,18 @@ void FA_NAKED( init_hw ) ( void )
 	    {
 		Flash_LED_12MS() ;			// Flash LED and wait
 		Delay_1024( T0DEL200MS ) ;
-							// Try to read a data packet,
-		QueryFFP( 0, 126 ) ;			// don't know how long - let it time out
+							// Try to read a data packet, FFP sends
+		QueryFFP( 0, DATSZFFP + 2 ) ;		// 17 clocks, wheel 12 - let it time out
 
+		// Keep INT0 on for another 12ms: a stick that has not been polled for a
+		// while can answer after the query's 400us timeout, and is only detected
+		// if its clocks are still counted. The guard bytes in 3DProasm.S catch them.
 		Flash_LED_12MS() ;
+		dis3DP_INT() ;				// Freeze sw_clkcnt and ffp_packet
 
 		// Analyze clock count
 
-		if ( ! ~sw_clkcnt )
+		if ( sw_clkcnt == 0xFF )		// B1 pressed, no clock arrived
 		    sw_clkcnt = 0 ;
 
 		if ( sw_clkcnt == (DATSZFFP+1) &&
@@ -314,8 +321,6 @@ void FA_NAKED( init_hw ) ( void )
 				FfbSetDriver(1);
 				break;
 			}
-			
-		dis3DP_INT() ;
 	    }
 
     dis3DP_INT() ;				// Disable INT
@@ -323,8 +328,6 @@ void FA_NAKED( init_hw ) ( void )
     cli() ;					// Disable interrupts
 
     sw_buttons = BUTMSK ;			// All buttons released
-
-    RET() ;					// naked also means no ret..
 }
 
 //------------------------------------------------------------------------------

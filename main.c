@@ -51,11 +51,12 @@ void CDC1_Task(void);
  */
 
 
-
+#ifdef ENABLE_JOYSTICK_SERIAL
 static CDC_LineEncoding_t LineEncoding1 = { .BaudRateBPS = 0,
                                             .CharFormat  = CDC_LINEENCODING_OneStopBit,
                                             .ParityType  = CDC_PARITY_None,
                                             .DataBits    = 8                            };
+#endif // ENABLE_JOYSTICK_SERIAL
 
 
 /** Main program entry point. This routine configures the hardware required by the application, then
@@ -147,18 +148,18 @@ void EVENT_USB_Device_ConfigurationChanged(void)
 	                                            CDC_TXRX_EPSIZE, ENDPOINT_BANK_SINGLE);
 	ConfigSuccess &= Endpoint_ConfigureEndpoint(CDC1_NOTIFICATION_EPNUM, EP_TYPE_INTERRUPT, ENDPOINT_DIR_IN,
 	                                            CDC_NOTIFICATION_EPSIZE, ENDPOINT_BANK_SINGLE);
-#endif // ENABLE_JOYSTICK_SERIAL
 
 	/* Reset line encoding baud rates so that the host knows to send new values */
 	LineEncoding1.BaudRateBPS = 0;
+#endif // ENABLE_JOYSTICK_SERIAL
 
 	/* Indicate endpoint configuration success or failure */
 	LEDs_SetAllLEDs(ConfigSuccess ? LEDS_NO_LEDS : LEDS_ALL_LEDS);
 	}
 
-
-volatile bool sPIDStatusPending = false;
-volatile USB_FFBReport_PIDStatus_Input_Data_t sPIDStatus;
+// Result of the last Create New Effect (SetReport 0x0305), returned by the host's
+// following Block Load request (GetReport 0x0306)
+static USB_FFBReport_PIDBlockLoad_Feature_Data_t sPIDBlockLoad = { .reportId = 6, .effectBlockIndex = FAILED_EFFECT_BLOCK_INDEX, .loadStatus = 3 };
 
 
 /** Event handler for the USB_ControlRequest event. This is used to catch and process control requests sent to
@@ -198,25 +199,24 @@ void EVENT_USB_Device_ControlRequest(void)
 
 		case HID_REQ_GetReport:
 			if (DoDebug(DEBUG_DETAIL))
-				LogTextLf("GetReport");
+				LogTextLfP(PSTR("GetReport"));
 			if (USB_ControlRequest.bmRequestType == (REQDIR_DEVICETOHOST | REQTYPE_CLASS | REQREC_INTERFACE))
 				{
 				LEDs_SetAllLEDs(LEDS_ALL_LEDS);
 
-				/*if (USB_ControlRequest.wValue == 0x0306)
-					{	// Feature 2: PID Block Load Feature Report
-					LogTextP(PSTR("GetReport PID Block Load Feature"));
-					_delay_us(500);	// Windows needs this delay to register the below feature report correctly
-					USB_FFBReport_PIDBlockLoad_Feature_Data_t featureData;
-					FfbOnPIDBlockLoad(&featureData);
+				if (USB_ControlRequest.wValue == 0x0306)
+					{	// Feature 2: PID Block Load Feature Report, the result of the last Create New Effect
 					Endpoint_ClearSETUP();
 
 					// Write the report data to the control endpoint
-					Endpoint_Write_Control_Stream_LE(&featureData, sizeof(USB_FFBReport_PIDBlockLoad_Feature_Data_t));
+					Endpoint_Write_Control_Stream_LE(&sPIDBlockLoad, sizeof(USB_FFBReport_PIDBlockLoad_Feature_Data_t));
 					Endpoint_ClearOUT();
+
+					// Answer each Create New Effect once; a repeated request reports an error
+					sPIDBlockLoad.effectBlockIndex = FAILED_EFFECT_BLOCK_INDEX;
+					sPIDBlockLoad.loadStatus = 3;
 					}
-				else */
-				if (USB_ControlRequest.wValue == 0x0307)
+				else if (USB_ControlRequest.wValue == 0x0307)
 					{	// Feature 3: PID Pool Feature Report
 					USB_FFBReport_PIDPool_Feature_Data_t featureData;
 					FfbOnPIDPool(&featureData);
@@ -249,16 +249,20 @@ void EVENT_USB_Device_ControlRequest(void)
 			break;
 		case HID_REQ_SetReport:
 			if (DoDebug(DEBUG_DETAIL))
-				LogTextLf("SetReport");
+				LogTextLfP(PSTR("SetReport"));
 
 			if (USB_ControlRequest.bmRequestType == (REQDIR_HOSTTODEVICE | REQTYPE_CLASS | REQREC_INTERFACE))
 				{
+				uint8_t data[10];	// This is enough room for all reports
+				uint16_t len = 0;	// again, enough for all
+
+				// Leaving the SETUP uncleared makes LUFA stall the over-long request
+				if (USB_ControlRequest.wLength > sizeof(data))
+					break;
+
 				LEDs_SetAllLEDs(LEDS_ALL_LEDS);
 
 				Endpoint_ClearSETUP();
-
-				uint8_t data[10];	// This is enough room for all reports
-				uint16_t len = 0;	// again, enough for all
 
 				len = USB_ControlRequest.wLength;
 				
@@ -266,22 +270,15 @@ void EVENT_USB_Device_ControlRequest(void)
 
 				// Read the report data from the control endpoint
 				Endpoint_Read_Control_Stream_LE(&data, len);
-				Endpoint_ClearStatusStage();
 
-				// Process the incoming report
-				if (USB_ControlRequest.wValue == 0x0305)
-					{	// Feature 1
-					_delay_us(500);	// Windows does not like to be answered too quickly
+				// Process the incoming report before completing the status stage: the host sends its
+				// next request (the Block Load GetReport) as soon as this one completes, and that
+				// SETUP must not arrive while this handler is still running
+				if (USB_ControlRequest.wValue == 0x0305 && len >= sizeof(USB_FFBReport_CreateNewEffect_Feature_Data_t))
+					{	// Feature 1: Create New Effect; the result is read back by GetReport 0x0306
 //					LogData("    => SetReport CreateNewEffect:", USB_ControlRequest.wValue & 0xFF, data, len);
 
-					USB_FFBReport_PIDBlockLoad_Feature_Data_t pidBlockLoadData;
-					FfbOnCreateNewEffect((USB_FFBReport_CreateNewEffect_Feature_Data_t*) data, &pidBlockLoadData);
-
-					Endpoint_ClearSETUP();
-
-					// Write the report data to the control endpoint
-					Endpoint_Write_Control_Stream_LE(&pidBlockLoadData, sizeof(USB_FFBReport_PIDBlockLoad_Feature_Data_t));
-					Endpoint_ClearOUT();
+					FfbOnCreateNewEffect((USB_FFBReport_CreateNewEffect_Feature_Data_t*) data, &sPIDBlockLoad);
 					}
 				else if (USB_ControlRequest.wValue == 0x0306)
 					{	// Feature 1
@@ -296,6 +293,8 @@ void EVENT_USB_Device_ControlRequest(void)
 /*				else
 					LogData("    => SetReport data: ", USB_ControlRequest.wValue & 0xFF, data, len);
 */
+
+				Endpoint_ClearStatusStage();
 
 				LEDs_SetAllLEDs(LEDS_NO_LEDS);
 				}
@@ -385,37 +384,42 @@ void HID_Task(void)
 
 		uint8_t out_ffbdata[64];	// enough for any single OUT-report
 		uint8_t total_bytes_read = 0;
+#ifdef DEBUG_ENABLE_USB
+		const uint8_t max_report_id = OUT_REPORT_ID_MAX + 1;	// 15 is the spoofed Create New Effect
+#else
+		const uint8_t max_report_id = OUT_REPORT_ID_MAX;
+#endif
 
 		while (Endpoint_BytesInEndpoint() && total_bytes_read < 64)
 			{
-			uint16_t out_wait_report_bytes = 0, out_report_data_read = 0;
+			uint16_t out_wait_report_bytes = 0;
 
 			// Read the reportID from the package to determine amount of data to expect next
-			while (Endpoint_Read_Stream_LE(&out_ffbdata, 1, NULL)
-					 == ENDPOINT_RWSTREAM_IncompleteTransfer)
-				{	// busy loop until the first byte is read out
-				}
+			Endpoint_Read_Stream_LE(&out_ffbdata, 1, NULL);
 
 			total_bytes_read += 1;
 
-			out_wait_report_bytes = OutReportSize[out_ffbdata[0]-1] - 1;
-			if (out_wait_report_bytes + total_bytes_read >= 64)
+			// Drop the rest of the packet on an unknown report id (its size is unknown) or a
+			// short report (reading on would block for the next packet and splice it in).
+			if (out_ffbdata[0] == 0 || out_ffbdata[0] > max_report_id || pgm_read_byte(&OutReportSize[out_ffbdata[0]-1]) == 0)
 				{
-				while (1)  {
+				Endpoint_ClearOUT();
 				LEDs_SetAllLEDs(LEDS_NO_LEDS);
-				_delay_ms(100);
-				LEDs_SetAllLEDs(LEDS_ALL_LEDS);
-				_delay_ms(100); }
+				return;
+				}
+
+			out_wait_report_bytes = pgm_read_byte(&OutReportSize[out_ffbdata[0]-1]) - 1;
+			if (Endpoint_BytesInEndpoint() < out_wait_report_bytes)
+				{
+				Endpoint_ClearOUT();
+				LEDs_SetAllLEDs(LEDS_NO_LEDS);
+				return;
 				}
 //			LogTextP(PSTR("Starting to read new report (reportId, bytesToWait)"));
 //			LogBinary(out_ffbdata, 1);
 //			LogBinary((uint8_t*) &out_wait_report_bytes, 2);
 
-			out_report_data_read = 0;
-			while (Endpoint_Read_Stream_LE(&out_ffbdata[1], out_wait_report_bytes, NULL)
-					== ENDPOINT_RWSTREAM_IncompleteTransfer)
-				{	// busy loop until the rest of the report data is read out
-				}
+			Endpoint_Read_Stream_LE(&out_ffbdata[1], out_wait_report_bytes, NULL);
 
 //			LogData("Read OUT data:", out_ffbdata[0], &out_ffbdata[1], out_wait_report_bytes);
 			total_bytes_read += out_wait_report_bytes;

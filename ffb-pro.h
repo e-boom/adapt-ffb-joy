@@ -74,10 +74,13 @@ typedef struct
 	uint8_t usb_attackLevel;
 	uint8_t usb_fadeLevel;
 	uint8_t range;			//Not varied for constant but simplifies use of common structure
-	uint8_t usb_magnitude;
+	int16_t usb_magnitude;	// signed: its sign reverses the direction
 	uint8_t usb_direction;
 	} FFP_Share_Constant;
-	
+
+// Compile-time check: the array size goes negative if the struct outgrows share_data
+typedef char FFP_Share_Constant_fits[(sizeof(FFP_Share_Constant) <= MAX_SHARE_DATA) ? 1 : -1];
+
 typedef struct
 	{
 	uint16_t usb_duration;
@@ -107,13 +110,13 @@ void FfbproSendModify(uint8_t effectId, uint8_t address, uint16_t value);
 void FfbproModifyDuration(uint8_t effectState, uint16_t* midi_data_param, uint8_t effectId, uint16_t duration);
 void FfbproModifyDeviceGain(uint8_t gain);
 
-void FfbproSetEnvelope(USB_FFBReport_SetEnvelope_Output_Data_t* data, volatile TEffectState* effect);
-void FfbproSetCondition(USB_FFBReport_SetCondition_Output_Data_t* data, volatile TEffectState* effect);
-void FfbproSetPeriodic(USB_FFBReport_SetPeriodic_Output_Data_t* data, volatile TEffectState* effect);
-void FfbproSetConstantForce(USB_FFBReport_SetConstantForce_Output_Data_t* data, volatile TEffectState* effect);
-void FfbproSetRampForce(USB_FFBReport_SetRampForce_Output_Data_t* data, volatile TEffectState* effect);
-int  FfbproSetEffect(USB_FFBReport_SetEffect_Output_Data_t *data, volatile TEffectState* effect);
-void FfbproCreateNewEffect(USB_FFBReport_CreateNewEffect_Feature_Data_t* inData, volatile TEffectState* effect);
+void FfbproSetEnvelope(USB_FFBReport_SetEnvelope_Output_Data_t* data, TEffectState* effect);
+void FfbproSetCondition(USB_FFBReport_SetCondition_Output_Data_t* data, TEffectState* effect);
+void FfbproSetPeriodic(USB_FFBReport_SetPeriodic_Output_Data_t* data, TEffectState* effect);
+void FfbproSetConstantForce(USB_FFBReport_SetConstantForce_Output_Data_t* data, TEffectState* effect);
+void FfbproSetRampForce(USB_FFBReport_SetRampForce_Output_Data_t* data, TEffectState* effect);
+int  FfbproSetEffect(USB_FFBReport_SetEffect_Output_Data_t *data, TEffectState* effect);
+void FfbproCreateNewEffect(USB_FFBReport_CreateNewEffect_Feature_Data_t* inData, TEffectState* effect);
 
 uint8_t FfbproUsbToMidiEffectType(uint8_t usb_effect_type);
 uint8_t FfbproEffectMemFull(uint8_t new_midi_type);

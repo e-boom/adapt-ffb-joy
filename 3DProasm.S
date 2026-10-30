@@ -180,32 +180,29 @@
 ;*******************************************************************************
 ;-------------------------------------------------------------------------------
 
-; Note: the following variables MUST be in the same 256 byte RAM segment !!
+; Note: the guard bytes, ffp_packet and sw_pktstart MUST be in the same 256 byte
+; RAM segment !! INT0_vect stores through X w/ XH fixed to hi8(sw_pktstart) and
+; only XL kept in sw_pktptr, and CopyFFPData steps through ffp_packet w/ XL only.
+; .balign 16 puts these 14 bytes into one aligned 16 byte block, which can never
+; cross a 256 byte boundary.
+;
+; Tick n (n = sw_clkcnt before the INT) starts a new byte (st -X) when
+; n mod 8 is 0, 2 or 5. Ticks 0-15 fill ffp_packet[5..0], ticks 16-31 land in
+; the 6 guard bytes. init_hw() leaves INT0 on for 12ms after its query returns,
+; so clocks past the 18 QueryFFP( 0, DATSZFFP+2 ) waits for still arrive there;
+; the stick sends one 17 clock packet per query. The swallowed 1st INT (n = 0xFF)
+; ORs into sw_pktstart, i.e. sw_pktptr, which the handler then overwrites.
 
 	.section	.bss,"aw",@nobits
 
-	.global sw_idbuf
-	.global sw_packet3
-	.global sw_packet2
-	.global sw_packet1
 	.global ffp_packet
 
 	.global sw_pktptr
 	.global sw_clkcnt
 
-	.skip 1,0
+	.balign 16
 
-sw_idbuf:
-        .skip 60,0
-
-sw_packet3:				; SideWinder 3D Pro packet buffers
-        .skip 8,0
-
-sw_packet2:
-        .skip 8,0
-
-sw_packet1:
-        .skip 2,0
+	.skip 6,0			; Guard bytes for ticks 16-31
 
 ffp_packet:
         .skip 6,0
@@ -488,197 +485,6 @@ CopyFFPData:
 
 ;-------------------------------------------------------------------------------
 ;*******************************************************************************
-;	Decode the raw 3DPro data and store it into sw_report
-;
-; Input:
-;	Pointer to start of packet to copy
-;
-;	3D Pro data packet structure
-;	============================
-;
-;	0   **** 0        0        0        0        0        0        1
-;	66665555 55555544 44444444 33333333 33222222 22221111 11111100 00000000
-;	32109876 54321098 76543210 98765432 10987654 32109876 54321098 76543210
-;	-------0 -------1 -------2 -------3 -------4 -------5 -------6 -------7
-;	sHHHcccc sTTTTTTT sRRRRRRR sBBRRTTT sYYYYYYY sXXXXXXX sBBBBBBB sHXXXYYY
-;	 210      6543210  6543210  8987987  6543210  6543210  7654321  3987987
-;
-;	USB report data structure
-;	=========================
-;
-;	-------0 -------1 -------2 -------3 -------4 -------5 -------6
-;	XXXXXXXX YYYYYYXX RRRRYYYY HHHRRRRR BBBBBBBH TTTTTTTB 00000TTT
-;	76543210 54321098 32109876 21087654 76543213 65432108      987
-;
-;-------------------------------------------------------------------------------
-
-	.global Copy3DPData
-
-Copy3DPData:
-	movw	XL,argPtrL
-
-	; Get X
-
-	ldi	temp1,5
-	add	XL,temp1
-
-	ld	temp0,X			; xl:-6543210
-
-	inc	XL
-	inc	XL
-
-	ld	temp2,X
-	andi	temp2,0b00111000	; xh:--987---
-
-	lsl	temp2			; xh:-987----
-	swap	temp2			; xh:-----987
-	lsl	temp0			; xl:6543210-
-	lsr	temp2			; xh:------98 [7]
-	ror	temp0			; xl:76543210
-
-	ldi	temp1,0xFE
-	add	temp2,temp1		; Add -512
-	andi	temp2,0b00000011	; xh:------98
-
-	sts	sw_report,temp0
-
-	; Y
-
-	ld	temp1,X
-	andi	temp1,0b00000111	; yh:-----987
-
-	subi	XL,3
-
-	ld	temp0,X			; yl:-6543210
-
-	lsl	temp0			; yl:6543210-
-	lsr	temp1			; yh:------98 [7]
-	ror	temp0			; yl:76543210
-
-	ldi	temp3,0xFE
-	add	temp1,temp3		; Add -512
-	andi	temp1,0b00000011	; yh:------98
-
-	lsl	temp0			; yl:6543210-
-	rol	temp1			; yh:-----987
-	lsl	temp0			; yl:543210--
-	rol	temp1			; yh:----8976
-	or	temp0,temp2
-
-	sts	sw_report+1,temp0
-	mov	temp2,temp1
-
-	; Rz
-
-	subi	XL,2
-
-	ld	temp0,X			; rl:-6543210
-
-	inc	XL
-
-	ld	temp1,X
-	andi	temp1,0b00011000	; rh:---87---
-
-	lsl	temp0			; rl:6543210-
-	lsl	temp1			; rh:--87----
-	swap	temp1			; rh:------87
-	lsr	temp1			; rh:-------8 [7]
-	ror	temp0			; rl:76543210
-
-	com	temp1			; Add -256
-	bst	temp1,0
-
-	swap	temp0			; rl:32107654
-	mov	temp1,temp0
-	andi	temp1,0b11110000	; rl:3210----
-	or	temp1,temp2
-
-	sts	sw_report+2,temp1
-	andi	temp0,0b00001111	; rh:----7654
-	bld	temp0,4			; rh:---87654
-	mov	temp2,temp0
-
-	;  Hat
-
-	subi	XL,3
-
-	ld	temp0,X
-	andi	temp0,0b01110000	; h:-210----
-
-	ldi	temp1,7
-	add	XL,temp1
-
-	ld	temp1,X			; h:-3------
-
-	bst	temp1,6
-	bld	temp0,7			; h:3210----
-	subi	temp0,0x10
-
-	bst	temp0,7
-	lsl	temp0			; h:210-----
-	or	temp0,temp2
-
-	sts	sw_report+3,temp0
-	clr	temp2
-	bld	temp2,0			; h:-------3
-
-	;  Buttons 1-8
-
-	dec	XL
-
-	ld	temp0,X			; b:-7654321
-
-	subi	XL,3
-
-	ld	temp1,X			; b:-89-----
-	bst	temp1,6
-	bld	temp0,7			; b:87654321
-
-	com	temp0
-
-	clr	temp1
-	lsl	temp0			; b:7654321-
-	rol	temp1			; b:-------8
-	or	temp0,temp2
-
-	sts	sw_report+4,temp0
-	mov	temp2,temp1
-
-	; Slider
-
-	subi	XL,2
-
-	ld	temp0,X			; sl:-6543210
-
-	inc	XL
-	inc	XL
-
-	ld	temp1,X
-	andi	temp1,0b00000111	; sh:-----987
-
-	lsl	temp0			; sl:6543210-
-	lsr	temp1			; sh:------98 [7]
-	ror	temp0			; sl:76543210
-
-	ldi	temp3,0xFE
-	add	temp1,temp3		; Add -512
-	andi	temp1,0b00000011
-
-	bst	temp0,7
-	lsl	temp0			; sl:6543210-
-	or	temp0,temp2
-
-	sts	sw_report+5,temp0
-
-	lsl	temp1			; sh:-----98-
-	bld	temp1,0
-
-	sts	sw_report+6,temp1
-
-	ret
-
-;-------------------------------------------------------------------------------
-;*******************************************************************************
 ;	Initiate and monitor data transfer from a 3DP/FFP/PP.
 ;	INT0 is left enabled upon exit.
 ;
@@ -767,40 +573,6 @@ Pgotsome:
 
 Pdone:					; Packet arrived..
 	inc	resOkL			; Signal Ok, return 1
-	ret
-
-;-------------------------------------------------------------------------------
-;*******************************************************************************
-;	Initiate and monitor data transfer from a 3DPro.
-;	INT0 is left enabled upon exit.
-;
-; Input:
-;	temp1	0 for data packet, -n for ID kick
-;	temp2	No. of triplets to wait for
-; Return:
-;	1 - received, 0 - timed out
-;-------------------------------------------------------------------------------
-
-	.global Query3DP
-
-Query3DP:
-	rcall	QueryFFP
-
-	tst	resOkL
-	breq	Qexit
-
-	lds	temp0,sw_clkcnt
-	cpi	temp0,DATSZ3DP		; If it's a data packet..
-	brne	Qexit
-
-	cli
-	clr	temp0
-	sts	sw_clkcnt,temp0		; Correct SWclkcnt and ptr so the next
-	lds	temp0,sw_pktptr
-	inc	temp0			; packet will allign w/ sw_packet2
-	sts	sw_pktptr,temp0
-	sei
-Qexit:
 	ret
 
 ;-------------------------------------------------------------------------------

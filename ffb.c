@@ -89,20 +89,12 @@ const FFB_Driver ffb_drivers[2] =
 static const FFB_Driver* ffb;
 
 // Effect management
-volatile uint8_t nextEID = 2;	// FFP effect indexes starts from 2 (yes, we waste memory for two effects...)
-volatile USB_FFBReport_PIDStatus_Input_Data_t pidState;	// For holding device status flags
+uint8_t nextEID = 2;	// FFP effect indexes starts from 2 (yes, we waste memory for two effects...)
+USB_FFBReport_PIDStatus_Input_Data_t pidState;	// For holding device status flags
 
-void SendPidStateForEffect(uint8_t eid, uint8_t effectState);
-void SendPidStateForEffect(uint8_t eid, uint8_t effectState)
-	{
-	pidState.effectBlockIndex = effectState;
+static TEffectState gEffectStates[MAX_EFFECTS+1];	// one for each effect (array index 0 is unused to simplify things)
 
-	pidState.effectBlockIndex = 0;
-	}
-
-static volatile TEffectState gEffectStates[MAX_EFFECTS+1];	// one for each effect (array index 0 is unused to simplify things)
-
-volatile TDisabledEffectTypes gDisabledEffects;
+TDisabledEffectTypes gDisabledEffects;
 
 uint8_t GetNextFreeEffect(void);
 void StartEffect(uint8_t id);
@@ -137,22 +129,24 @@ uint8_t GetNextFreeEffect(void)
 	return id;
 	}
 
+// Id 0x7F stops every effect in one message; MIDI sends block, so no per-slot stops
 void StopAllEffects(void)
 	{
-	for (uint8_t id = 1; id <= MAX_EFFECTS; id++)
-		StopEffect(id);
+	for (uint8_t id = 2; id <= MAX_EFFECTS; id++)
+		gEffectStates[id].state &= ~MEffectState_Playing;
+	ffb->StopEffect(0x7F);	// TODO: wheel ?
 	}
 
 void StartEffect(uint8_t id)
 	{
-	if (id > MAX_EFFECTS)
+	if (id < 2 || id > MAX_EFFECTS)
 		return;
 	gEffectStates[id].state |= MEffectState_Playing;
 	}
 
 void StopEffect(uint8_t id)
 	{
-	if (id > MAX_EFFECTS)
+	if (id < 2 || id > MAX_EFFECTS)
 		return;
 	gEffectStates[id].state &= ~MEffectState_Playing;
 	if (!gDisabledEffects.effectId[id])
@@ -161,14 +155,16 @@ void StopEffect(uint8_t id)
 
 void FreeEffect(uint8_t id)
 	{
-	if (id > MAX_EFFECTS)
+	if (id < 2 || id > MAX_EFFECTS)
 		return;
 
+	uint8_t wasAllocated = gEffectStates[id].state & MEffectState_Allocated;
 	gEffectStates[id].state = 0;
-	if (id < nextEID)
+	if (id >= 2 && id < nextEID)
 		nextEID = id;
 		
-	ffb->FreeEffect(id);
+	if (wasAllocated)
+		ffb->FreeEffect(id);
 	}
 
 void FreeAllEffects(void)
@@ -184,7 +180,7 @@ uint8_t GetMidiEffectType(uint8_t id)
 	if (id > MAX_EFFECTS || gEffectStates[id].state == MEffectState_Free) {
 		return 0xFF; //use this as null value since it can't be a valid value in MIDI
 	} else {
-		volatile TEffectState* effect = &gEffectStates[id];
+		TEffectState* effect = &gEffectStates[id];
 		return ((midi_data_common_t*)effect->data)->waveForm;
 	}
 }
@@ -207,8 +203,8 @@ void FfbSendSysEx(const uint8_t* midi_data, uint8_t len)
 	FfbSendData(&mark, 1);
 }
 
-uint8_t FfbSetParamMidi_14bit(uint8_t effectState, volatile uint16_t* midi_data_param, uint8_t effectId, uint8_t address, uint16_t value)
-	{ // why does midi data need to be volatile? What else can change it?? Are the USB FFB messages not processed sequentially?
+uint8_t FfbSetParamMidi_14bit(uint8_t effectState, uint16_t* midi_data_param, uint8_t effectId, uint8_t address, uint16_t value)
+	{
 	if (value == *midi_data_param)
 		return 0;
 	else
@@ -220,8 +216,8 @@ uint8_t FfbSetParamMidi_14bit(uint8_t effectState, volatile uint16_t* midi_data_
 		}
 	}
 	
-uint8_t FfbSetParamMidi_7bit(uint8_t effectState, volatile uint8_t* midi_data_param, uint8_t effectId, uint8_t address, uint8_t value)
-	{ // why does midi data need to be volatile? What else can change it?? Are the USB FFB messages not processed sequentially?
+uint8_t FfbSetParamMidi_7bit(uint8_t effectState, uint8_t* midi_data_param, uint8_t effectId, uint8_t address, uint8_t value)
+	{
 	if (value == *midi_data_param)
 		return 0;
 	else
@@ -266,7 +262,14 @@ int16_t UsbInt8ToMidiInt14(int8_t inUsbValue)
 uint16_t UsbPeriodToFrequencyHz(uint16_t period)
 	{
 	//USB Period in ms to Frequency in Hz
-	return ((2000 / period) + 1) / 2; //Rounds to nearest Hz i.e. 1.51Hz rounds up to 2Hz
+	if (period == 0)
+		return 1;
+
+	uint16_t frequency = ((2000 / period) + 1) / 2; //Rounds to nearest Hz i.e. 1.51Hz rounds up to 2Hz
+	if (frequency == 0)
+		return 1;	// periods over 2 s would round to 0 Hz
+
+	return frequency;
 	}
 
 // Calculates the final value of the given coefficient <value> when taking in given <gain> into account.
@@ -276,8 +279,8 @@ int8_t CalcGainCoeff(int8_t usbValue, uint8_t gain)
 	return ((v * gain) / 255);
 	}
 
-// Lengths of each report type
-const uint16_t OutReportSize[] = {
+// Lengths of each report type, in flash: read with pgm_read_byte
+const uint8_t OutReportSize[] PROGMEM = {
 	sizeof(USB_FFBReport_SetEffect_Output_Data_t),		// 1
 	sizeof(USB_FFBReport_SetEnvelope_Output_Data_t),	// 2
 	sizeof(USB_FFBReport_SetCondition_Output_Data_t),	// 3
@@ -304,6 +307,31 @@ void FfbHandle_SetDownloadForceSample(USB_FFBReport_SetDownloadForceSample_Outpu
 void FfbHandle_SetCustomForce(USB_FFBReport_SetCustomForce_Output_Data_t* data);
 void FfbHandle_SetEffect(USB_FFBReport_SetEffect_Output_Data_t *data);
 
+// The effect id indexes gEffectStates, so only slots handed out by Create New Effect pass.
+static uint8_t FfbReportEffectIdValid(uint8_t reportId, uint8_t effectId)
+	{
+	switch (reportId)
+		{
+		case 10:	// Effect Operation
+		case 11:	// Block Free
+			if (effectId == 0xFF)
+				return 1;	// all effects
+			// fall through
+		case 1:
+		case 2:
+		case 3:
+		case 4:
+		case 5:
+		case 6:
+		case 7:
+		case 14:
+			return (effectId >= 2 && effectId <= MAX_EFFECTS
+					&& (gEffectStates[effectId].state & MEffectState_Allocated));
+		default:
+			return 1;	// no effect id in this report
+		}
+	}
+
 // Handle incoming data from USB and convert it to MIDI data to joystick
 void FfbOnUsbData(uint8_t *data, uint16_t len)
 	{
@@ -314,7 +342,11 @@ void FfbOnUsbData(uint8_t *data, uint16_t len)
 
 	uint8_t effectId = data[1]; // effectBlockIndex is always the second byte.
 	
-
+	if (!FfbReportEffectIdValid(data[0], effectId))
+		{
+		LEDs_SetAllLEDs(LEDS_NO_LEDS);
+		return;
+		}
 	
 	switch (data[0])	// reportID
 		{
@@ -378,19 +410,26 @@ void FfbOnCreateNewEffect(USB_FFBReport_CreateNewEffect_Feature_Data_t* inData, 
 {
 	outData->reportId = 6;
 	
-	uint8_t midi_effect_type = ffb->UsbToMidiEffectType(inData->effectType - 1);
-	if (ffb->EffectMemFull(midi_effect_type)) {
-		outData->effectBlockIndex = 0;
-	} else {
-		outData->effectBlockIndex = GetNextFreeEffect(); // can also return 0 if adapter full
-	}
+	// Custom (12) is implemented by neither driver; type 0 would wrap the table index
+	uint8_t typeError = (inData->effectType < USB_EFFECT_CONSTANT || inData->effectType > USB_EFFECT_FRICTION);
+	uint8_t midi_effect_type = 0;
+	if (!typeError)
+		midi_effect_type = ffb->UsbToMidiEffectType(inData->effectType - 1);
+	uint8_t id = 0;
+	if (!typeError && !ffb->EffectMemFull(midi_effect_type))
+		id = GetNextFreeEffect(); // can also return 0 if adapter full
 
-	if (outData->effectBlockIndex == 0) {
+	if (typeError) {
+		outData->effectBlockIndex = FAILED_EFFECT_BLOCK_INDEX;
+		outData->loadStatus = 3;	// 1=Success,2=Full,3=Error
+	} else if (id == 0) {
+		outData->effectBlockIndex = FAILED_EFFECT_BLOCK_INDEX;
 		outData->loadStatus = 2;	// 1=Success,2=Full,3=Error
 	} else {
+		outData->effectBlockIndex = id;
 		outData->loadStatus = 1;	// 1=Success,2=Full,3=Error
 		
-		volatile TEffectState* effect = &gEffectStates[outData->effectBlockIndex];
+		TEffectState* effect = &gEffectStates[id];
 
 		((midi_data_common_t*)effect->data)->waveForm = midi_effect_type;
 		
@@ -408,14 +447,14 @@ void FfbOnCreateNewEffect(USB_FFBReport_CreateNewEffect_Feature_Data_t* inData, 
 		FlushDebugBuffer();
 		}
 
-	LogDataLf("Usb <=", outData->reportId, outData, sizeof(USB_FFBReport_PIDBlockLoad_Feature_Data_t));
+	LogDataLfP(PSTR("Usb <="), outData->reportId, outData, sizeof(USB_FFBReport_PIDBlockLoad_Feature_Data_t));
 
 	WaitMs(5);
 }
 
 void FfbHandle_SetEffect(USB_FFBReport_SetEffect_Output_Data_t *data)
 {
-	volatile TEffectState* effect = &gEffectStates[data->effectBlockIndex];
+	TEffectState* effect = &gEffectStates[data->effectBlockIndex];
 	
 	if (DoDebug(DEBUG_DETAIL))
 		{
@@ -449,6 +488,8 @@ void FfbHandle_SetEffect(USB_FFBReport_SetEffect_Output_Data_t *data)
 		midi_duration = MIDI_DURATION_INFINITE;
 	} else {
 		midi_duration = UsbUint16ToMidiUint14_Time(data->duration); // MIDI unit is 2ms
+		if (midi_duration == MIDI_DURATION_INFINITE)
+			midi_duration = 1;	// a 0 or 1 ms effect must not become infinite
 	}
 	
 	ffb->ModifyDuration(effect->state, &(midi_data->duration), data->effectBlockIndex, midi_duration);
@@ -471,6 +512,7 @@ void FfbOnPIDPool(USB_FFBReport_PIDPool_Feature_Data_t *data)
 		}
 
 	FreeAllEffects();
+	ffb->FreeEffect(0x7f);	// keep the stick's ids in step with the adapter's
 
 	data->reportId = 7;
 	data->ramPoolSize = 0xFFFF;
@@ -481,7 +523,7 @@ void FfbOnPIDPool(USB_FFBReport_PIDPool_Feature_Data_t *data)
 void FfbHandle_SetCustomForceData(USB_FFBReport_SetCustomForceData_Output_Data_t *data)
 	{
 	if (DoDebug(DEBUG_DETAIL))
-		LogTextLf("Set Custom Force Data");
+		LogTextLfP(PSTR("Set Custom Force Data"));
 	}
 
 
@@ -489,7 +531,7 @@ void FfbHandle_SetCustomForceData(USB_FFBReport_SetCustomForceData_Output_Data_t
 void FfbHandle_SetDownloadForceSample(USB_FFBReport_SetDownloadForceSample_Output_Data_t *data)
 	{
 	if (DoDebug(DEBUG_DETAIL))
-		LogTextLf("Set Download Force Sample");
+		LogTextLfP(PSTR("Set Download Force Sample"));
 	}
 
 
@@ -504,8 +546,11 @@ void FfbHandle_EffectOperation(USB_FFBReport_EffectOperation_Output_Data_t *data
 		LogBinary(&eid, 1);
 		}
 
+	uint8_t disabled = 0;	// "all effects" has no entry in effectId[]
 	if (eid == 0xFF)
 		eid = 0x7F;	// All effects
+	else if (eid <= MAX_EFFECTS)
+		disabled = gDisabledEffects.effectId[eid];
 
 	if (data->operation == 1)
 		{	// Start
@@ -513,7 +558,7 @@ void FfbHandle_EffectOperation(USB_FFBReport_EffectOperation_Output_Data_t *data
 			LogTextLfP(PSTR(" Start"));
 
 		StartEffect(data->effectBlockIndex);
-		if (!gDisabledEffects.effectId[eid])
+		if (!disabled)
 			ffb->StartEffect(eid);
 		}
 	else if (data->operation == 2)
@@ -523,14 +568,12 @@ void FfbHandle_EffectOperation(USB_FFBReport_EffectOperation_Output_Data_t *data
 
 		// Stop all first
 		StopAllEffects();
-		if (!gDisabledEffects.effectId[eid])
-			ffb->StopEffect(0x7F); // TODO: wheel ?
 
 		// Then start the given effect
 		StartEffect(data->effectBlockIndex);
 
-		if (!gDisabledEffects.effectId[eid])
-			ffb->StartEffect(0x7F);	// TODO: wheel ?
+		if (!disabled)
+			ffb->StartEffect(eid);
 		}
 	else if (data->operation == 3)
 		{	// Stop
@@ -595,23 +638,23 @@ void FfbHandle_DeviceControl(USB_FFBReport_DeviceControl_Output_Data_t *data)
 	switch (control)
 	{
 		case USB_DCTRL_ACTUATORS_ENABLE:
-			LogTextLf("Enable Actuators");
+			LogTextLfP(PSTR("Enable Actuators"));
 			if (success)
 				pidState.status |= (1 << 1);
 			break;
 		case USB_DCTRL_ACTUATORS_DISABLE:
-			LogTextLf("Disable Actuators");
+			LogTextLfP(PSTR("Disable Actuators"));
 			if (success)
 				pidState.status &= ~(1 << 1);
 			break;
 		case USB_DCTRL_STOPALL:
-			LogTextLf("Stop All Effects");
+			LogTextLfP(PSTR("Stop All Effects"));
 			if (success)
 				pidState.effectBlockIndex = 0;
 				//need to update all effect states to not playing? Maybe not needed since adapter doesn't track when effects finish anyway
 			break;
 		case USB_DCTRL_RESET:
-			LogTextLf("Reset");
+			LogTextLfP(PSTR("Reset"));
 			// Reset (e.g. FFB-application out of focus)
 			//Enables auto centre, continues, enables actuators, stop and free all effects, resets device gain (for FFP at least)
 			if (success)
@@ -623,12 +666,12 @@ void FfbHandle_DeviceControl(USB_FFBReport_DeviceControl_Output_Data_t *data)
 				}
 			break;
 		case USB_DCTRL_PAUSE:		
-			LogTextLf("Pause");
+			LogTextLfP(PSTR("Pause"));
 			if (success)
 				pidState.status |= 1;
 			break;
 		case USB_DCTRL_CONTINUE:
-			LogTextLf("Continue");
+			LogTextLfP(PSTR("Continue"));
 			if (success)
 				pidState.status &= ~1;
 			break;
@@ -658,7 +701,7 @@ void FfbHandle_DeviceGain(USB_FFBReport_DeviceGain_Output_Data_t *data)
 
 void FfbHandle_SetCustomForce(USB_FFBReport_SetCustomForce_Output_Data_t *data)
 	{
-	LogTextLf("Set Custom Force");
+	LogTextLfP(PSTR("Set Custom Force"));
 //	LogBinary(&data, sizeof(USB_FFBReport_SetCustomForce_Output_Data_t));
 	}
 
@@ -711,8 +754,8 @@ void FfbInitMidi()
 	UCSR1A = 0;	
 	UBRR1 = ((F_CPU/(31250ul<<4))-1);
 
-	// Set frame format to 8 data bits, no parity, 1 stop bit, 1 start bit
-	UCSR1C = (1<<7)|(1<<UCSZ11)|(1<<UCSZ10);
+	// Set frame format to asynchronous 8N1: 8 data bits, no parity, 1 stop bit
+	UCSR1C = (1<<UCSZ11)|(1<<UCSZ10);
 	// Enable transmitter only
 	//UCSR1B = (1 << TXCIE1) | (1<<TXEN1);
 	UCSR1B = (1<<TXEN1);
@@ -730,38 +773,26 @@ void FfbSendByte(uint8_t data);
 
 void FfbSendData(const uint8_t *data, uint16_t len)
 	{
+#if DEBUG_ENABLED
 	if (gDebugMode)
 		{
 		LogTextP(PSTR(" => Midi:")); LogBinaryLf(data, len);
 		}
+#endif
 
 	uint16_t i = 0;
 	for (i = 0; i < len; i++)
 		FfbSendByte(data[i]);
 	}
-	
-void FfbSendPackets(const uint8_t *data, uint16_t len)
+
+// Not logged: LogBinaryLf reads RAM, and flash data is only fixed command sequences
+void FfbSendData_P(const uint8_t *data, uint16_t len)
 	{
 	uint16_t i = 0;
-	while (i < len)
-		{
-		WaitMs(1);
-		uint8_t count = data[i++];
-		while (count--)
-			FfbSendByte(data[i++]);
-		}
+	for (i = 0; i < len; i++)
+		FfbSendByte(pgm_read_byte(&data[i]));
 	}
 
-// ----------------------------------------------
-// Ring buffer for sending MIDI data to joystick
-// ----------------------------------------------
-
-// Buffer for sending data to MIDI
-//#define MIDI_BUFFER_SIZE 128
-
-#ifndef MIDI_BUFFER_SIZE
-
-// Non-buffered MIDI
 void FfbSendByte(uint8_t data)
 	{
 	// Wait if a byte is being transmitted
@@ -770,70 +801,9 @@ void FfbSendByte(uint8_t data)
 	UDR1 = data;
 	}
 
-#else
-
-// Buffered MIDI
-
-volatile uint8_t gMidiBuffer[MIDI_BUFFER_SIZE];
-volatile unit8_t *midi_buffer_head = gMidiBuffer;
-volatile unit8_t *midi_buffer_tail = gMidiBuffer;
-
-void FfbSendByte(uint8_t data)
-	{
-	cli();
-
-	*gMidiBufferHead++ = data;
-
-	if (gMidiBufferHead == gMidiBufferTail)
-		{	// Ouch - buffer overflown!
-
-		return;
-		}
-
-	if (gMidiBufferHead - gMidiBuffer >= MIDI_BUFFER_SIZE)
-		gMidiBufferHead = gMidiBuffer;
-
-	sei();
-	}
-
-
-ISR(USART1_UDRE_vect)
-	{
-	cli();
-
-	uint8_t i;
-
-	if (gMidiBufferHead == gMidiBufferTail)
-		{
-		// Buffer is empty, disable transmit interrupt
-		UCSR1B = (1<<TXCIE1) | (1<<TXEN1);
-		}
-	else 
-		{
-		i = gMidiBufferTail + 1;
-		if (i >= MIDI_BUFFER_SIZE) i = 0;
-		UDR1 = gMidiBuffer[i];
-		gMidiBufferTail = i;
-		}
-
-	sei();
-	}
-#endif // MIDI_BUFFER_SIZE
-
 // ----------------------------------------------
 // Debug and other settings
 // ----------------------------------------------
-
-
-// Send "enable FFB" to joystick
-void FfbSendEnable()
-	{
-	}
-
-// Send "disable FFB" to joystick
-void FfbSendDisable()
-	{
-	}
 
 
 uint8_t FfbDebugListEffects(uint8_t *index)
@@ -900,6 +870,9 @@ void FfbEnableSines(uint8_t inEnable)
 
 void FfbEnableEffectId(uint8_t inId, uint8_t inEnable)
 	{
+	if (inId > MAX_EFFECTS)
+		return;
+
 	gDisabledEffects.effectId[inId] = !inEnable;
 
 	if (gEffectStates[inId].state == MEffectState_Playing)

@@ -58,16 +58,13 @@ typedef struct
 void Joystick_Init(void);
 
 // Gets called to check connection to the joystick at startup
-// or after disconnect.
-// If initialization succeeds, the function should return true.
-// If it fails, return false and this functions gets called again
-// until further progress is made (e.g. waiting for the actual
-// joystick to be connected).
+// or after disconnect. Always returns true: Joystick_Init does
+// not return until the stick has answered.
 int Joystick_Connect(void);
 
 // Gets called when input report of joysticks position, buttons etc. are
-// requested. Data written to <outReportData> is sent to host if the function
-// returns true. If false is returned, nothing is sent.
+// requested and fills <outReportData>. Always returns true; the callers
+// ignore the return value and send the report every time.
 // If <inReportId> has value INPUT_REPORTID_ALL, all input report IDs should
 // generated.
 int Joystick_CreateInputReport(uint8_t inReportId, USB_JoystickReport_Data_t* const outReportData);

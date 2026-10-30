@@ -26,33 +26,45 @@
 #include <LUFA/Drivers/Board/LEDs.h>
 #include <util/delay.h>
 
+// The constant tables live in flash (avr-gcc would copy them to RAM): read with pgm_read_byte
+static const uint8_t usbToMidiEffectType[] PROGMEM = {
+	0x06,	// Constant,
+	0x05, 	// Ramp
+	0x03, 	// Square
+	0x02, 	// Sine
+	0x04,	// Triangle
+	0x05,	// SawtoothDown
+	0x05,	// SawtoothUp
+	0x08,	// Spring
+	0x09,	// Damper
+	0x0a,	// Inertia
+	0x0b,	// Friction
+	0x00 	// Custom ?
+};
+
 uint8_t FfbwheelUsbToMidiEffectType(uint8_t usb_effect_type)
 {
-	const uint8_t usbToMidiEffectType[] = {
-		0x06,	// Constant, 
-		0x05, 	// Ramp
-		0x03, 	// Square
-		0x02, 	// Sine
-		0x04,	// Triangle
-		0x05,	// SawtoothDown
-		0x05,	// SawtoothUp
-		0x08,	// Spring
-		0x09,	// Damper
-		0x0a,	// Inertia
-		0x0b,	// Friction
-		0x00 	// Custom ?
-	};
-	
 	if (usb_effect_type >= sizeof(usbToMidiEffectType))
 		return 0;
 		
-	return usbToMidiEffectType[usb_effect_type];
+	return pgm_read_byte(&usbToMidiEffectType[usb_effect_type]);
 }
 
 uint8_t FfbwheelEffectMemFull(uint8_t new_midi_type)
 {
 	return 0; //Supported quantities of each effect not yet known
 }
+
+static const uint8_t startupFfbWheelData_0[] PROGMEM = {
+	0xf3, 0x1d
+};
+
+static const uint8_t startupFfbWheelData_1[] PROGMEM = {
+	0xf1 ,0x0e ,0x43 ,0x01 ,0x00 ,0x7d,
+	0xf1 ,0x7e ,0x04 ,0x01 ,0x3e ,0x4e,
+	0xf1 ,0x1c ,0x45 ,0x01 ,0x3e ,0x2f,
+	0xf1 ,0x0b ,0x46 ,0x01 ,0x7d ,0x00,
+};
 
 /**
  * Initialize wheel for FF. Releases spring effect.
@@ -63,22 +75,10 @@ uint8_t FfbwheelEffectMemFull(uint8_t new_midi_type)
  */
 void FfbwheelEnableInterrupts(void)
 	{
-	
-	const uint8_t startupFfbWheelData_0[] = {
-		0xf3, 0x1d
-	};
-	
-	const uint8_t startupFfbWheelData_1[] = {
-		0xf1 ,0x0e ,0x43 ,0x01 ,0x00 ,0x7d,
-		0xf1 ,0x7e ,0x04 ,0x01 ,0x3e ,0x4e,
-		0xf1 ,0x1c ,0x45 ,0x01 ,0x3e ,0x2f,
-		0xf1 ,0x0b ,0x46 ,0x01 ,0x7d ,0x00,
-	};
-	
     WaitMs(100);
 
-	FfbSendData(startupFfbWheelData_0, sizeof(startupFfbWheelData_0));
-	FfbSendData(startupFfbWheelData_1, sizeof(startupFfbWheelData_1));
+	FfbSendData_P(startupFfbWheelData_0, sizeof(startupFfbWheelData_0));
+	FfbSendData_P(startupFfbWheelData_1, sizeof(startupFfbWheelData_1));
 	FfbwheelDeviceControl(USB_DCTRL_RESET); // Leave auto centre on
 	
 	WaitMs(100);
@@ -111,6 +111,7 @@ uint8_t FfbwheelDeviceControl(uint8_t usb_control)
 
 const uint8_t* FfbwheelGetSysExHeader(uint8_t* hdr_len)
 {
+	// Stays in RAM: FfbSendSysEx sends it with FfbSendData
 	static const uint8_t header[] = {0xf0, 0x00, 0x01, 0x0a, 0x15};
 	*hdr_len = sizeof(header);
 	return header;
@@ -176,45 +177,45 @@ void FfbwheelModifyDuration(uint8_t effectState, uint16_t* midi_data_param, uint
 
 void FfbwheelModifyDeviceGain(uint8_t gain)
 { // TO IMPLEMENT: CHANGED FOR COMPATIBILITY - NOT TESTED FOR WHEEL
-	static const uint8_t gainCommand[] = {0xf1, 0x10, 0x40, 0x00, 0x7f, 0x00}; // only sends max gain for now
-	FfbSendData(gainCommand, sizeof(gainCommand));
+	static const uint8_t gainCommand[] PROGMEM = {0xf1, 0x10, 0x40, 0x00, 0x7f, 0x00}; // only sends max gain for now
+	FfbSendData_P(gainCommand, sizeof(gainCommand));
 
 }
 
 
 void FfbwheelSetEnvelope(
 	USB_FFBReport_SetEnvelope_Output_Data_t* data,
-	volatile TEffectState* effect)
+	TEffectState* effect)
 {
 }
 
 void FfbwheelSetCondition(
 	USB_FFBReport_SetCondition_Output_Data_t* data,
-	volatile TEffectState* effect)
+	TEffectState* effect)
 {
 }
 
 void FfbwheelSetPeriodic(
 	USB_FFBReport_SetPeriodic_Output_Data_t* data,
-	volatile TEffectState* effect)
+	TEffectState* effect)
 {
 }
 
 void FfbwheelSetConstantForce(
 	USB_FFBReport_SetConstantForce_Output_Data_t* data,
-	volatile TEffectState* effect)
+	TEffectState* effect)
 {
 }
 
 void FfbwheelSetRampForce(
 	USB_FFBReport_SetRampForce_Output_Data_t* data,
-	volatile TEffectState* e)
+	TEffectState* e)
 {
 }
 
 int FfbwheelSetEffect(
 	USB_FFBReport_SetEffect_Output_Data_t *data,
-	volatile TEffectState* e)
+	TEffectState* e)
 {
 	/*
 	USB effect data:
@@ -243,14 +244,12 @@ int FfbwheelSetEffect(
 	case USB_EFFECT_RAMP:
 	{
 		midi_data_len = sizeof(cmd_f0_wave_t);
-		cmd_f0_wave_t* midi_data = (cmd_f0_wave_t*)e->data;
 	}
 	break;
 	
 	case USB_EFFECT_CONSTANT:
 	{
 		midi_data_len = sizeof(cmd_f0_constant_force_t);
-		cmd_f0_constant_force_t* midi_data = (cmd_f0_constant_force_t*)e->data;
 	}
 	break;
 
@@ -261,7 +260,6 @@ int FfbwheelSetEffect(
 	case USB_EFFECT_FRICTION:
 	{
 		midi_data_len = sizeof(cmd_f0_friction_t);
-		cmd_f0_friction_t* midi_data = (cmd_f0_friction_t*)e->data;
 	}
 	break;
 	
@@ -277,7 +275,7 @@ int FfbwheelSetEffect(
 
 void FfbwheelCreateNewEffect(
 	USB_FFBReport_CreateNewEffect_Feature_Data_t* data,
-	volatile TEffectState* effect)
+	TEffectState* effect)
 {
 	cmd_f0_common_t* c = (cmd_f0_common_t*)&effect->data;
 	c->command = 0x20; // always 0x20
@@ -345,9 +343,6 @@ void FfbwheelCreateNewEffect(
 	break;
 	
 	case USB_EFFECT_CONSTANT:
-	{
-		cmd_f0_constant_force_t* midi_data = (cmd_f0_constant_force_t*)effect->data;
-	}
 	break;
 
 	case USB_EFFECT_SPRING:

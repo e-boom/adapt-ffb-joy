@@ -35,10 +35,8 @@
 //-------------------------------------------------------------------------------
 // SideWinder packet sizes
 
-#define	DATSZ3DP	22	/* 3DP data packet size in clock ticks (x3 bit, sent 3x) */
-#define	IDSZ3DP		160	/* 3DP ID packet size in clock ticks */
 #define	DATSZFFP	16	/* FFP/PP data packet size in clock ticks (x3 bit) */
-#define	DATSZFFPW	11	/* FFP/PP data packet size in clock ticks (x3 bit) */
+#define	DATSZFFPW	11	/* FFP wheel data packet size in clock ticks (x3 bit) */
 
 //-------------------------------------------------------------------------------
 // Things not defined in iom32u4.h
@@ -189,19 +187,11 @@
 #define	LED_tog()	tog_bit( LEDPORT, LEDBIT )
 
 //-------------------------------------------------------------------------------
-// main.c interface
-
-extern uint8_t
-    idle_rate,				// idle rate in 4ms clicks, 0 for indefinite
-    idle_cnt ;				// idle counter
-
-//-------------------------------------------------------------------------------
 // 3DPro.c interface
 
 extern uint8_t
     sw_id,				// Will be SW_ID_...
-    sw_report[SW_REPSZ_3DP + ADDED_REPORT_DATA_SIZE],		// Report buffer
-    sw_reportsz ;			// Size of report in bytes
+    sw_report[SW_REPSZ_3DP + ADDED_REPORT_DATA_SIZE] ;		// Report buffer
 
 extern void
     init_hw( void ),			// Initialize HW & wait for stick
@@ -209,12 +199,6 @@ extern void
 
 //-------------------------------------------------------------------------------
 // 3DProasm.S interface
-
-extern uint8_t				// Sidewinder 3D Pro packet buffers
-    sw_idbuf[60],
-    sw_packet3[8],
-    sw_packet2[8],
-    sw_packet1[8] ;
 
 extern uint8_t				// Sidewinder PP/FFP packet buffer
     ffp_packet[6] ;
@@ -224,12 +208,10 @@ extern volatile uint8_t
     sw_clkcnt ;				// no. of clock ticks on B1
 
 extern void
-    CopyFFPData( uint8_t *packet ),	// Copy PP/FFP data from packet to sw_report
-    Copy3DPData( uint8_t *packet ) ;	// Copy 3DP data from packet to sw_report
+    CopyFFPData( uint8_t *packet ) ;	// Copy PP/FFP data from packet to sw_report
 
 extern uint8_t
-    QueryFFP( uint8_t id, uint8_t sz ),	// Read data from PP/FFP
-    Query3DP( uint8_t id, uint8_t sz ) ;// Read data from 3DPro
+    QueryFFP( uint8_t id, uint8_t sz ) ;	// Read data from PP/FFP
 
 //-------------------------------------------------------------------------------
 

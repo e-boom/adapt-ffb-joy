@@ -28,17 +28,15 @@
 */
 
 #include "debug.h"
+#include "ffb.h"
 
-// Various debug target settings
-const uint8_t DEBUG_TO_NONE = 0; // Disable sending debug data
-const uint8_t DEBUG_TO_UART = 1; // Debug data sent to UART-out
-const uint8_t DEBUG_TO_USB = 2; // Debug data sent to USB COM-port - enables basic level debugging
-const uint8_t DEBUG_DETAIL = 4; // Include additional details to debug data
+// Only acts in debug builds; the serial 'd'/'D' commands change it
+volatile uint8_t gDebugMode = DEBUG_TO_USB; // set this higher if debugging e.g. at startup is needed
+
+#if DEBUG_ENABLED
 
 // Controls whether debug data contains data as hexadecimal ascii instead of as raw binary
 #define DEBUG_DATA_AS_HEX
-
-volatile uint8_t gDebugMode = 2; // set this higher if debugging e.g. at startup is needed
 
 #ifdef DEBUG_ENABLE_USB
 // Internal buffer for sending debug data to USB COM-port
@@ -166,8 +164,28 @@ void LogDataLf(const char *text, uint8_t reportId, const void *data, uint16_t le
 	LogBinaryLf(data, len);
 	}
 
+void LogDataP(const char *text, uint8_t reportId, const void *data, uint16_t len)
+	{
+	if (gDebugMode == DEBUG_TO_NONE)
+		return;
+
+	LogTextP(text);
+	LogBinary(&reportId, 1);
+	LogBinary(data, len);
+	}
+
+void LogDataLfP(const char *text, uint8_t reportId, const void *data, uint16_t len)
+	{
+	if (gDebugMode == DEBUG_TO_NONE)
+		return;
+
+	LogTextP(text);
+	LogBinary(&reportId, 1);
+	LogBinaryLf(data, len);
+	}
+
 // Log all reports found in the given data (may have one or more)
-void LogReport(const char *text, const uint16_t *reportSizeArray, uint8_t *data, uint16_t len)
+void LogReport(const char *text, const uint8_t *reportSizeArray, uint8_t *data, uint16_t len)
 	{
 	if (gDebugMode == DEBUG_TO_NONE)
 		return;
@@ -176,9 +194,19 @@ void LogReport(const char *text, const uint16_t *reportSizeArray, uint8_t *data,
 
 	uint8_t *p = data;
 
+#ifdef DEBUG_ENABLE_USB
+	const uint8_t max_report_id = OUT_REPORT_ID_MAX + 1;	// 15 is the spoofed Create New Effect
+#else
+	const uint8_t max_report_id = OUT_REPORT_ID_MAX;
+#endif
+
 	while (p < data + len)
 		{
-		uint8_t replen = reportSizeArray[p[0]-1];
+		if (p[0] == 0 || p[0] > max_report_id)
+			break;
+		uint8_t replen = pgm_read_byte(&reportSizeArray[p[0]-1]);
+		if (replen == 0)
+			break;	// would never advance
 		LogBinary(p, 1);
 		if (replen > 1)
 			LogBinary(&p[1], replen-1);
@@ -236,7 +264,7 @@ void FlushDebugBuffer(void)
 	Endpoint_SelectEndpoint(CDC1_TX_EPNUM);
 
 	// Write the String to the Endpoint
-	Endpoint_Write_Stream_LE(&debug_buffer, len, NULL);
+	Endpoint_Write_Stream_LE((const void*) debug_buffer, len, NULL);	// the buffer is volatile, the stream API is not
 
 	// Finalize the stream transfer to send the last packet
 	Endpoint_ClearIN();
@@ -249,3 +277,4 @@ void FlushDebugBuffer(void)
 #endif // DEBUG_ENABLE_USB
 	}
 
+#endif // DEBUG_ENABLED
