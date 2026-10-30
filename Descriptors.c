@@ -1556,7 +1556,7 @@ const USB_Descriptor_Device_t PROGMEM DeviceDescriptorJoystick =
 #else
 	.ProductID              = 0x2056,	// WAS 0x2043
 #endif // ENABLE_JOYSTICK_SERIAL
-	.ReleaseNumber          = VERSION_BCD(00.01),
+	.ReleaseNumber          = VERSION_BCD(FIRMWARE_RELEASE),
 
 	.ManufacturerStrIndex   = 0x01,
 	.ProductStrIndex        = 0x02,
@@ -1590,7 +1590,7 @@ const USB_Descriptor_Device_t PROGMEM DeviceDescriptorWheel =
 #else
 	.ProductID              = 0x204E,	// WAS 0x2043
 #endif // ENABLE_JOYSTICK_SERIAL
-	.ReleaseNumber          = VERSION_BCD(00.01),
+	.ReleaseNumber          = VERSION_BCD(FIRMWARE_RELEASE),
 
 	.ManufacturerStrIndex   = 0x01,
 	.ProductStrIndex        = 0x02,

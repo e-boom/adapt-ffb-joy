@@ -54,6 +54,14 @@
 //	reported, so the host sees 16 buttons. 0 reports the 9 buttons as they are.
 #define SHIFT_BUTTON	1
 
+// Define: FIRMWARE_RELEASE
+//	The USB device release number (bcdDevice), as LUFA's VERSION_BCD takes it:
+//	00.23 is reported as 0x0023. The host shows it as REV_0023 in the device's
+//	hardware ids and in the version field of SDL's joystick GUID, so the
+//	firmware on a stick can be told from the PC. Raise it with every build
+//	handed out for testing.
+#define FIRMWARE_RELEASE	00.25
+
 	/* Includes: */
 		#include <LUFA/Drivers/USB/USB.h>
 
