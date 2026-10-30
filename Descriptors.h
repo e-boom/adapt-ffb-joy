@@ -60,7 +60,7 @@
 //	hardware ids and in the version field of SDL's joystick GUID, so the
 //	firmware on a stick can be told from the PC. Raise it with every build
 //	handed out for testing.
-#define FIRMWARE_RELEASE	00.25
+#define FIRMWARE_RELEASE	00.27
 
 	/* Includes: */
 		#include <LUFA/Drivers/USB/USB.h>

@@ -92,6 +92,14 @@ static const FFB_Driver* ffb;
 uint8_t nextEID = 2;	// FFP effect indexes starts from 2 (yes, we waste memory for two effects...)
 USB_FFBReport_PIDStatus_Input_Data_t pidState;	// For holding device status flags
 
+// The stick's own centring spring. Every Reset (the driver's init, and the host's Device Control
+// Reset, which Windows sends when an application opens the stick) turns it on, so the stick centres
+// itself for applications that play no forces. An application that creates an effect wants its
+// own forces alone (its spring, or none at rest), so the first Create New Effect after a Reset turns
+// it off through the stick's Stop All, which is the only command that does. The HID PID protocol
+// has no autocentre control, so a host cannot ask for this itself.
+static uint8_t gAutocentreOn = 1;
+
 static TEffectState gEffectStates[MAX_EFFECTS+1];	// one for each effect (array index 0 is unused to simplify things)
 
 TDisabledEffectTypes gDisabledEffects;
@@ -433,6 +441,10 @@ void FfbOnCreateNewEffect(USB_FFBReport_CreateNewEffect_Feature_Data_t* inData, 
 
 		((midi_data_common_t*)effect->data)->waveForm = midi_effect_type;
 		
+		if (gAutocentreOn) {	// no effect exists yet, so Stop All only switches the centring spring off
+			ffb->DeviceControl(USB_DCTRL_STOPALL);
+			gAutocentreOn = 0;
+		}
 		ffb->CreateNewEffect(inData, effect);
 	}
 	
@@ -650,7 +662,10 @@ void FfbHandle_DeviceControl(USB_FFBReport_DeviceControl_Output_Data_t *data)
 		case USB_DCTRL_STOPALL:
 			LogTextLfP(PSTR("Stop All Effects"));
 			if (success)
+				{
 				pidState.effectBlockIndex = 0;
+				gAutocentreOn = 0;	// the stick's Stop All includes its centring spring
+				}
 				//need to update all effect states to not playing? Maybe not needed since adapter doesn't track when effects finish anyway
 			break;
 		case USB_DCTRL_RESET:
@@ -661,6 +676,7 @@ void FfbHandle_DeviceControl(USB_FFBReport_DeviceControl_Output_Data_t *data)
 				{
 				WaitMs(75);
 				FreeAllEffects();
+				gAutocentreOn = 1;
 				pidState.status |= (1 << 1); //actuators
 				pidState.status &= ~1; //continue
 				}
