@@ -415,20 +415,21 @@ void FfbOnCreateNewEffect(USB_FFBReport_CreateNewEffect_Feature_Data_t* inData, 
 	uint8_t midi_effect_type = 0;
 	if (!typeError)
 		midi_effect_type = ffb->UsbToMidiEffectType(inData->effectType - 1);
-	if (typeError || ffb->EffectMemFull(midi_effect_type)) {
-		outData->effectBlockIndex = 0;
-	} else {
-		outData->effectBlockIndex = GetNextFreeEffect(); // can also return 0 if adapter full
-	}
+	uint8_t id = 0;
+	if (!typeError && !ffb->EffectMemFull(midi_effect_type))
+		id = GetNextFreeEffect(); // can also return 0 if adapter full
 
 	if (typeError) {
+		outData->effectBlockIndex = FAILED_EFFECT_BLOCK_INDEX;
 		outData->loadStatus = 3;	// 1=Success,2=Full,3=Error
-	} else if (outData->effectBlockIndex == 0) {
+	} else if (id == 0) {
+		outData->effectBlockIndex = FAILED_EFFECT_BLOCK_INDEX;
 		outData->loadStatus = 2;	// 1=Success,2=Full,3=Error
 	} else {
+		outData->effectBlockIndex = id;
 		outData->loadStatus = 1;	// 1=Success,2=Full,3=Error
 		
-		TEffectState* effect = &gEffectStates[outData->effectBlockIndex];
+		TEffectState* effect = &gEffectStates[id];
 
 		((midi_data_common_t*)effect->data)->waveForm = midi_effect_type;
 		

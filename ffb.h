@@ -45,6 +45,13 @@
 //FFP can support 10 waveforms + 2 of each conditional = 18 not including other unsupported effect types
 //Wheel limits?
 
+// The effect block index a failed Create New Effect answers with. Windows' pid.dll looks up the
+// returned index in its effect table whatever the load status says, as (index - 1) * entry size,
+// so index 0 makes it read far outside the table and crash (seen in pid.dll 10.0.26100 on an 11th
+// waveform effect). MAX_EFFECTS is in the descriptor's range but never handed out:
+// GetNextFreeEffect stops at MAX_EFFECTS - 1, so a later Block Free of it is ignored.
+#define FAILED_EFFECT_BLOCK_INDEX	MAX_EFFECTS
+
 	
 // ---- Input
 
