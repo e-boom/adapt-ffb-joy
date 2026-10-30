@@ -11,6 +11,8 @@ For more information, see [Adapt-ffb-joy Wiki](https://github.com/tloimu/adapt-f
 The firmware software project is configured to compile for ATmega32U4 with WinAVR-20100110 or newer version.
 
 ## Firmware Version History ##
+v0.5.1 (this fork, 10/2026) - Teensy 2.0 with a Sidewinder Force Feedback Pro: jitter filter on the twist and pedals, firmware review fixes, no Windows crash (pid.dll) when the stick is full of effects, only the controls the stick has, product names and a shift button, and the build number in the USB release number. [adaptffbjoy-0.5.1.hex](downloads/adaptffbjoy-0.5.1.hex) is the one to use (USB release 0026). [adaptffbjoy-0.5.1-twist-tuned.hex](downloads/adaptffbjoy-0.5.1-twist-tuned.hex) (USB release 0025) adds a twist drift correction measured on one particular stick; on another stick it can make the twist worse.
+
 [v0.5.0beta1](https://github.com/tloimu/adapt-ffb-joy/releases/tag/0.5.0beta1) - Upgrades to FFP Force Feedback capability for wider compatibility with games 11/2023; currently in beta
 
 v0.4.0 (=r74 on original Google Code site) - Allows for future support for the Sidewinder FF Wheel and changes the USB debug protocol. Not released here, but code used for many other forks.

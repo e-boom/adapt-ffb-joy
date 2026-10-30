@@ -59,8 +59,10 @@
 //	00.23 is reported as 0x0023. The host shows it as REV_0023 in the device's
 //	hardware ids and in the version field of SDL's joystick GUID, so the
 //	firmware on a stick can be told from the PC. Raise it with every build
-//	handed out for testing.
+//	handed out for testing; a build can also set it with -DFIRMWARE_RELEASE=00.26.
+#ifndef FIRMWARE_RELEASE
 #define FIRMWARE_RELEASE	00.25
+#endif
 
 	/* Includes: */
 		#include <LUFA/Drivers/USB/USB.h>

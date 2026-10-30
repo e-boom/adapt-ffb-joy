@@ -191,7 +191,8 @@ static uint8_t AxisFilter_Update(AxisFilter_t* filter, uint8_t sample)
 // then stretched so that, at every stick position, the untouched handle reads 32
 // and the stops read 0 and 63.
 //
-// TWIST_DRIFT_CORRECTION: 0 reports the twist uncorrected.
+// TWIST_DRIFT_CORRECTION: 0 reports the twist uncorrected. The tables below fit one stick, so a
+//	general build passes -DTWIST_DRIFT_CORRECTION=0 (downloads/adaptffbjoy-0.5.1.hex).
 // twist_grid_x/_y: the X and Y values of the tables' columns and rows. The middle
 //	ones are where the stick rested in the recording (multi_controller raw / 64).
 // twist_low/_centre/_high: raw twist in quarter counts (0..252 for 0..63); rows
@@ -202,7 +203,9 @@ static uint8_t AxisFilter_Update(AxisFilter_t* filter, uint8_t sample)
 //	exactly in the corner, one count added so the end is always reached), carried
 //	over from a 3 x 3 table.
 
+#ifndef TWIST_DRIFT_CORRECTION
 #define TWIST_DRIFT_CORRECTION		1
+#endif
 #define TWIST_GRID					5
 
 static const int16_t twist_grid_x[TWIST_GRID] PROGMEM = { -512, -294, -76, 218, 511 };
