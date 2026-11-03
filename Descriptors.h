@@ -61,7 +61,7 @@
 //	firmware on a stick can be told from the PC. Raise it with every build
 //	handed out for testing; a build can also set it with -DFIRMWARE_RELEASE=00.26.
 #ifndef FIRMWARE_RELEASE
-#define FIRMWARE_RELEASE	00.25
+#define FIRMWARE_RELEASE	00.27
 #endif
 
 	/* Includes: */
